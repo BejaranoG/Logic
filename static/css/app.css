@@ -87,11 +87,11 @@ body {
 /* ══ TOPBAR ═════════════════════════════════════════ */
 .topbar {
   position: sticky; top: 0; z-index: 300;
-  height: 64px;
+  height: 68px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center;
-  padding: 0 24px; gap: 16px;
+  padding: 0 28px; gap: 18px;
   box-shadow: var(--shadow);
 }
 
@@ -99,10 +99,11 @@ body {
   display: flex; align-items: center;
   text-decoration: none; flex-shrink: 0;
   transition: opacity .15s;
+  padding: 6px 0;
 }
 .topbar-logo:hover { opacity: .8; }
 .logo-img {
-  height: 52px; width: auto;
+  height: 44px; width: auto;
 }
 
 
