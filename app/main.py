@@ -81,6 +81,12 @@ COL_MAP = {
     "corte_mensual":            "CORTE MENSUAL DE INTERES",
     "folio_linea":              "FOLIO LINEA DE CRÉDITO",
     "tipo_credito":             "TIPO DE CRÉDITO",
+    "dia_habil":                "DIA HABIL POSTERIOR",
+    "int_ord_venc_exig":        "SALDO INTERES ORDINARIO VENCIDO EXIGIBLE",
+    "int_ord_venc_no_exig":     "SALDO INTERES ORDINARIO VENCIDO NO EXIGIBLE",
+    "int_ref_venc_exig":        "SALDO INTERES REFINANCIADO VENCIDO EXIGIBLE",
+    "int_ref_venc_no_exig":     "SALDO INTERES REFINANCIADO VENCIDO NO EXIGIBLE",
+    "capital_vencido_no_exig":  "SALDO CAPITAL VENCIDO NO EXIGIBLE",
 }
 
 
@@ -144,6 +150,14 @@ def process_df(df: pd.DataFrame) -> list[dict]:
         except Exception:
             folio = 0
 
+        # Intereses vencidos = ord vencido exig + ord vencido no exig + ref vencido exig + ref vencido no exig
+        int_vencidos = (
+            safe_float(g("int_ord_venc_exig")) +
+            safe_float(g("int_ord_venc_no_exig")) +
+            safe_float(g("int_ref_venc_exig")) +
+            safe_float(g("int_ref_venc_no_exig"))
+        )
+
         records.append({
             "folio":                    folio,
             "cliente":                  str(g("cliente") or "").strip(),
@@ -151,13 +165,15 @@ def process_df(df: pd.DataFrame) -> list[dict]:
             "sucursal":                 str(g("sucursal") or "").strip(),
             "contrato":                 str(g("contrato") or "").strip(),
             "producto":                 str(g("producto") or "").strip(),
+            "status":                   str(g("status") or "").strip().upper(),
             "status_cobr":              str(g("status_cobr") or "").strip(),
             "tipo_credito":             str(g("tipo_credito") or "").strip(),
+            "dia_habil":                str(g("dia_habil") or "SIN DIA HABIL POSTERIOR").strip(),
             "capital_vigente":          round(capital_vigente, 2),
             "capital_impago":           round(safe_float(g("capital_impago")), 2),
-            "capital_vencido_exigible": round(safe_float(g("capital_vencido_exigible")), 2),
+            "capital_vencido":          round(safe_float(g("capital_vencido_exigible")), 2),
             "capital_dispuesto":        round(safe_float(g("capital_dispuesto")), 2),
-            "tasa":                     round(tasa_raw, 4),           # already in % (e.g. 23.7288)
+            "tasa":                     round(tasa_raw, 4),
             "tasa_moratoria":           str(g("tasa_moratoria") or "--").strip(),
             "fecha_entrega":            fecha_entrega_str,
             "fecha_vto":                fecha_vto_str,
@@ -165,6 +181,7 @@ def process_df(df: pd.DataFrame) -> list[dict]:
             "fecha_contrato_fin":       safe_date(g("fecha_contrato_fin")),
             "interes_ordinario_vigente":round(safe_float(g("interes_ordinario_vigente")), 2),
             "interes_ordinario_impago": round(safe_float(g("interes_ordinario_impago")), 2),
+            "interes_vencidos":         round(int_vencidos, 2),
             "interes_moratorio":        round(safe_float(g("interes_moratorio")), 2),
             "dias_impago":              int(safe_float(g("dias_impago"))),
             "aniv_day":                 aniv_day,
