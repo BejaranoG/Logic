@@ -5,6 +5,7 @@ const state = {
   data:    [],
   current: null,
   lastSync: null,
+  fechaCorte: null,
 };
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -155,8 +156,9 @@ async function loadCartera() {
   try {
     const res  = await fetch('/api/cartera');
     const json = await res.json();
-    state.data     = json.data || [];
-    state.lastSync = json.last_sync;
+    state.data       = json.data || [];
+    state.lastSync   = json.last_sync;
+    state.fechaCorte = json.fecha_corte || todayISO();
     const t = json.last_sync
       ? new Date(json.last_sync).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})
       : '—';
@@ -225,7 +227,7 @@ function renderDashboard() {
   set('stat-total',     d.length);
   set('stat-vigente',   d.filter(r=>r.status==='VIGENTE').length);
   set('stat-vencido',   d.filter(r=>r.status==='VENCIDO').length);
-  set('stat-impago',    d.filter(r=>r.dias_impago>0).length);
+  set('stat-impago',    d.filter(r=>r.capital_impago>0 || r.interes_ordinario_impago>0).length);
   set('stat-clientes',  new Set(d.map(r=>r.cliente)).size);
   set('stat-ejecutivos',new Set(d.map(r=>r.ejecutivo).filter(Boolean)).size);
 
@@ -246,7 +248,8 @@ function renderDashboard() {
   });
   const tbody = document.getElementById('dash-table-body');
   tbody.innerHTML = sorted.map(r => {
-    const dotClass = r.capital_vencido > 0 ? 'danger' : r.dias_impago > 0 ? 'warn' : 'ok';
+    const hasImpago = r.capital_impago > 0 || r.interes_ordinario_impago > 0;
+    const dotClass = r.capital_vencido > 0 ? 'danger' : hasImpago ? 'warn' : 'ok';
     const capitalShow = r.capital_vigente > 0 ? r.capital_vigente : (r.capital_impago + r.capital_vencido);
     const statusLabel = r.status === 'VENCIDO' ? `<span style="color:var(--red);font-weight:600">VENCIDO</span>` : (r.status_cobr||r.status);
     return `<tr onclick="selectDisp(${r.folio})">
@@ -300,7 +303,7 @@ function onSearch() {
   Object.entries(groups).forEach(([client, items]) => {
     if (Object.keys(groups).length > 1) html += `<div class="sd-group-label">${client}</div>`;
     items.forEach(r => {
-      const dot = r.capital_vencido > 0 ? 'danger' : r.dias_impago > 0 ? 'warn' : 'ok';
+      const dot = r.capital_vencido > 0 ? 'danger' : (r.capital_impago > 0 || r.interes_ordinario_impago > 0) ? 'warn' : 'ok';
       html += `<div class="sd-item" onclick="selectDisp(${r.folio}); closeSearch()">
         <div class="sd-dot ${dot}"></div>
         <div class="sd-main">
@@ -358,28 +361,94 @@ function selectDisp(folio) {
   // Nav
   set('detail-nav-folio', `#${d.folio} · ${d.cliente}`);
 
-  // Hero
-  set('h-folio',    `Disposición #${d.folio}`);
-  set('h-cliente',  d.cliente);
+  // Header
+  set('h-folio', d.folio);
+  set('h-cliente', d.cliente);
   set('h-contrato', d.contrato || '—');
   set('h-ejecutivo',d.ejecutivo || '—');
   set('h-sucursal', d.sucursal || '—');
   set('h-producto', d.producto || '—');
 
-  const tagEl = document.getElementById('h-status-tag');
+  // Status inline label
+  const statusEl = document.getElementById('h-status-inline');
+  const hasImpago = d.capital_impago > 0 || d.interes_ordinario_impago > 0;
   if (d.capital_vencido > 0) {
-    tagEl.innerHTML = `<span class="tag tag-vencido">Cartera Vencida</span>`;
-  } else if (d.dias_impago > 0) {
-    tagEl.innerHTML = `<span class="tag tag-preventivo">Impago · ${d.dias_impago}d</span>`;
+    statusEl.textContent = 'Vencido';
+    statusEl.className = 'disp-status-inline st-vencido';
+  } else if (hasImpago) {
+    statusEl.textContent = 'Impago';
+    statusEl.className = 'disp-status-inline st-impago';
   } else {
-    tagEl.innerHTML = `<span class="tag tag-vigente">${d.status_cobr || 'Vigente'}</span>`;
+    statusEl.textContent = 'Vigente';
+    statusEl.className = 'disp-status-inline st-vigente';
   }
 
-  // Hero KPIs — for VENCIDO, show the relevant capital
-  const capitalPrincipal = d.capital_vigente > 0 ? d.capital_vigente : (d.capital_impago + d.capital_vencido + (d.capital_vencido_no_exig || 0));
-  set('hk-capital', fmtMXN(capitalPrincipal));
-  set('hk-tasa',    fmtPct(d.tasa));
-  set('hk-diario',  fmtMXN(capitalPrincipal * (d.tasa/100) / 360));
+  // Timeline bar
+  set('tl-start', fmtDateShort(d.fecha_entrega));
+  set('tl-end', fmtDateShort(d.fecha_contrato_fin));
+  updateTimeline(d);
+
+  // Status card
+  const sc = document.getElementById('status-card');
+  const scCheck = document.getElementById('sc-check');
+  if (d.capital_vencido > 0) {
+    sc.className = 'status-card sc-vencido';
+    scCheck.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    set('sc-status-label', 'Crédito vencido');
+    set('sc-etapa', d.status_cobr || 'Cartera vencida');
+  } else if (hasImpago) {
+    sc.className = 'status-card sc-impago';
+    scCheck.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+    set('sc-status-label', 'Crédito con impago');
+    set('sc-etapa', d.status_cobr || 'Preventivo');
+  } else {
+    sc.className = 'status-card sc-vigente';
+    scCheck.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    set('sc-status-label', 'Crédito vigente');
+    set('sc-etapa', d.status_cobr || 'Etapa 1');
+  }
+
+  // Summary
+  const saldoSinAtraso = d.capital_vigente + d.interes_ordinario_vigente;
+  const saldoConAtraso = d.capital_impago + d.capital_vencido + (d.capital_vencido_no_exig||0) + d.interes_ordinario_impago + d.interes_vencidos + d.interes_moratorio;
+  const saldoTotal = saldoSinAtraso + saldoConAtraso;
+  const capitalTotal = d.capital_vigente + d.capital_impago + d.capital_vencido + (d.capital_vencido_no_exig||0);
+  const deudaHoy = d.interes_ordinario_vigente + d.interes_ordinario_impago + d.interes_vencidos + d.interes_moratorio;
+
+  set('sc-sin-atraso', fmtMXN(saldoSinAtraso) + ' MXN');
+  set('sc-con-atraso', fmtMXN(saldoConAtraso) + ' MXN');
+  set('sc-total',      fmtMXN(saldoTotal) + ' MXN');
+  set('sc-deuda',      fmtMXN(deudaHoy) + ' MXN');
+
+  // Saldos table
+  set('st-cap-total', fmtMXN(capitalTotal));
+  set('st-cap-vig', fmtMXN(d.capital_vigente) + ' MXN');
+  set('st-cap-imp', fmtMXN(d.capital_impago) + ' MXN');
+  set('st-cap-vec', fmtMXN(d.capital_vencido) + ' MXN');
+  set('st-cap-vec-ne', fmtMXN(d.capital_vencido_no_exig||0) + ' MXN');
+  set('st-int-vig', fmtMXN(d.interes_ordinario_vigente) + ' MXN');
+  set('st-int-imp', fmtMXN(d.interes_ordinario_impago) + ' MXN');
+  set('st-int-vec-exig', fmtMXN(d.interes_vencidos) + ' MXN');
+  set('st-int-vec-ne', '$0.00 MXN');
+  set('st-mora', fmtMXN(d.interes_moratorio) + ' MXN');
+
+  // Apply coloring to table cells with values
+  ['st-cap-imp','st-cap-vec','st-cap-vec-ne','st-int-imp','st-int-vec-exig','st-mora'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const val = parseFloat(el.textContent.replace(/[$,MXN\s]/g,''));
+    el.className = 'st-val' + (val > 0 ? ' st-danger' : ' st-zero');
+  });
+  ['st-cap-vig','st-int-vig'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.className = 'st-val';
+  });
+
+  // Hero KPIs
+  set('hk-tasa',      fmtPct(d.tasa));
+  set('hk-tasa-mora', typeof d.tasa_moratoria === 'number' ? fmtPct(d.tasa_moratoria) : '—');
+  const capitalPrincipal = d.capital_vigente > 0 ? d.capital_vigente : capitalTotal;
+  set('hk-diario', fmtMXN(capitalPrincipal * (d.tasa/100) / 360));
 
   const today = todayISO();
   set('hk-vto', fmtDate(d.fecha_vto));
@@ -387,17 +456,6 @@ function selectDisp(folio) {
     const diff = diffDays(today, d.fecha_vto);
     set('hk-vto-sub', diff >= 0 ? `en ${diff} días` : `hace ${-diff} días`);
   }
-
-  // Saldos
-  set('s-dispuesto', fmtMXN(d.capital_dispuesto));
-  set('s-vigente',   fmtMXN(d.capital_vigente));
-  setValCls('s-impago',   d.capital_impago,  fmtMXN(d.capital_impago));
-  setValCls('s-vencido',  d.capital_vencido, fmtMXN(d.capital_vencido), 'danger');
-  setValCls('s-vencido-no-exig', (d.capital_vencido_no_exig||0), fmtMXN(d.capital_vencido_no_exig||0), 'danger');
-  set('s-int-ord', fmtMXN(d.interes_ordinario_vigente));
-  setValCls('s-int-imp', d.interes_ordinario_impago, fmtMXN(d.interes_ordinario_impago));
-  setValCls('s-int-vec',  d.interes_vencidos,         fmtMXN(d.interes_vencidos), 'danger');
-  setValCls('s-moratorio',d.interes_moratorio,         fmtMXN(d.interes_moratorio), 'danger');
 
   // Info
   set('ig-entrega',   fmtDate(d.fecha_entrega));
@@ -415,27 +473,23 @@ function selectDisp(folio) {
   window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
+function updateTimeline(d) {
+  if (!d.fecha_entrega || !d.fecha_contrato_fin) return;
+  const today = todayISO();
+  const totalDays = diffDays(d.fecha_entrega, d.fecha_contrato_fin);
+  const elapsed = diffDays(d.fecha_entrega, today);
+  const pct = totalDays > 0 ? Math.max(0, Math.min(100, (elapsed / totalDays) * 100)) : 0;
+  document.getElementById('tl-progress').style.width = pct + '%';
+  document.getElementById('tl-marker').style.left = pct + '%';
+}
+
 // ── Projection ────────────────────────────────────────────────────────────────
 function setupProj(d) {
   const today = todayISO();
+  const corte = state.fechaCorte || today;
 
-  // ① Start: last amortization = one month before next vencimiento
-  const periodStart = getPeriodStart(d);
-
-  // ② End: today by default
-  document.getElementById('proj-from').value = periodStart;
-  document.getElementById('proj-to').value   = today;
-
-  set('hint-from', `Última amortización: ${fmtDateShort(periodStart)}`);
-  set('hint-to',   'Fecha a proyectar');
-
-  // Aniversario button
-  const nextAniv = getNextAniv(d, today);
-  const anivBtn  = document.getElementById('qbtn-aniv');
-  if (nextAniv) {
-    anivBtn.textContent = `Aniv. ${fmtDateShort(nextAniv)}`;
-    anivBtn.dataset.aniv = nextAniv;
-  }
+  // Set the timeline date picker to today
+  document.getElementById('proj-to').value = today;
 
   calcProj();
 }
@@ -444,81 +498,82 @@ function calcProj() {
   const d = state.current;
   if (!d) return;
 
-  const fromISO = document.getElementById('proj-from').value;
-  const toISO   = document.getElementById('proj-to').value;
-  if (!fromISO || !toISO) return;
+  const corte = state.fechaCorte || todayISO();
+  const toISO = document.getElementById('proj-to').value;
+  if (!toISO) return;
 
   // Apply día hábil adjustment to the target date
   const adjustedTo = adjustToBusinessDay(toISO, d.dia_habil);
   const wasAdjusted = adjustedTo !== toISO;
 
-  const result = calcInterest(d, fromISO, adjustedTo);
-  if (!result || result.dias <= 0) return;
+  // Days from corte to projection target
+  const diasProj = diffDays(corte, adjustedTo);
 
-  const { dias, diario, interes } = result;
+  // Interest from DB (already accrued at corte date)
+  const intCorte     = d.interes_ordinario_vigente || 0;
+  const moraCorte    = d.interes_moratorio || 0;
 
-  // ── Moratorio projection ──
-  const mora = calcMoratorio(d, dias);
-  const moraInteres = mora ? mora.interes : 0;
+  // NEW projected interest (from corte forward)
+  const diario = d.capital_vigente * (d.tasa / 100) / 360;
+  const intNuevo = diasProj > 0 ? Math.round(diario * diasProj * 100) / 100 : 0;
+
+  // NEW moratorio projection (from corte forward)
+  const mora = diasProj > 0 ? calcMoratorio(d, diasProj) : null;
+  const moraNuevo = mora ? mora.interes : 0;
   const hasMora = mora && mora.capitalMora > 0;
 
-  // ── HERO — projected interest (most visible) ──
-  set('proj-hero-value', fmtMXN(interes));
+  // Totals
+  const totalIntOrdinario = intCorte + intNuevo;
+  const totalMoratorio    = moraCorte + moraNuevo;
+  const totalDias         = diasProj > 0 ? diasProj : 0;
+
+  // ── HERO — total projected interest ──
+  set('proj-hero-value', fmtMXN(totalIntOrdinario));
   set('proj-hero-date',  fmtDate(adjustedTo));
-  set('proj-hero-sub',   `${dias} días · ${fmtMXN(diario)}/día`);
+  if (diasProj > 0) {
+    set('proj-hero-sub', `${fmtMXN(intCorte)} al corte + ${fmtMXN(intNuevo)} (${totalDias}d × ${fmtMXN(Math.round(diario*100)/100)}/día)`);
+  } else {
+    set('proj-hero-sub', `${fmtMXN(intCorte)} al corte · sin días adicionales`);
+  }
 
   // Period bar
-  set('pb-period',  `${fmtDate(fromISO)} → ${fmtDate(adjustedTo)}`);
-  set('pb-dias',    `${dias} días`);
+  set('pb-corte',   fmtDate(corte));
+  set('pb-target',  fmtDate(adjustedTo));
+  set('pb-dias',    diasProj > 0 ? `${totalDias} días` : 'Sin días adicionales');
   set('pb-habil',   wasAdjusted
     ? `Ajustado al ${fmtDateShort(adjustedTo)} (día hábil)`
     : d.dia_habil === 'CON DIA HABIL POSTERIOR' ? 'Día hábil ✓' : 'Sin ajuste');
-  set('pb-diario',  fmtMXN(diario) + '/día');
-  set('pb-formula', `${fmtMXNK(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 360 × ${dias}`);
+  set('pb-diario',  fmtMXN(Math.round(diario*100)/100) + '/día');
 
-  // Secondary results — include moratorio
+  // Secondary results
   set('res-capital',  fmtMXN(d.capital_vigente));
   set('res-int-vec',  fmtMXN(d.interes_vencidos));
   set('res-cap-vec',  fmtMXN(d.capital_vencido));
-  set('res-moratorio-proj', fmtMXN(moraInteres));
+  set('res-moratorio-proj', fmtMXN(totalMoratorio));
   set('res-int-imp-proj', fmtMXN(d.interes_ordinario_impago));
-  const total = interes + moraInteres + d.interes_vencidos + d.interes_ordinario_impago + d.capital_vencido + d.capital_impago;
-  set('res-total',    fmtMXN(total));
+  const total = totalIntOrdinario + totalMoratorio + d.interes_vencidos + d.interes_ordinario_impago + d.capital_vencido + d.capital_impago;
+  set('res-total', fmtMXN(total));
 
   // Show/hide moratorio section
   const moraSection = document.getElementById('mora-section');
-  if (moraSection) moraSection.style.display = hasMora ? '' : 'none';
-  if (hasMora && mora) {
-    set('mora-capital', fmtMXN(mora.capitalMora));
-    set('mora-tasa',    fmtPct(mora.tasaMora) + ' anual');
-    set('mora-dias',    `${mora.dias} días`);
-    set('mora-result',  fmtMXN(mora.interes));
-    set('mora-formula', `${fmtMXNK(mora.capitalMora)} × ${fmtPct(mora.tasaMora)} ÷ 360 × ${mora.dias}`);
+  if (moraSection) moraSection.style.display = (hasMora || moraCorte > 0) ? '' : 'none';
+  if (hasMora || moraCorte > 0) {
+    const capMora = mora ? mora.capitalMora : (d.capital_impago + d.capital_vencido + (d.capital_vencido_no_exig||0));
+    const tasaMora = mora ? mora.tasaMora : (d.tasa_moratoria || d.tasa * 2);
+    set('mora-capital', fmtMXN(capMora));
+    set('mora-tasa',    fmtPct(tasaMora) + ' anual');
+    set('mora-dias',    diasProj > 0 ? `${totalDias} días` : '0 días');
+    set('mora-result',  fmtMXN(totalMoratorio));
+    set('mora-formula', `Al corte: ${fmtMXN(moraCorte)} + Proyectado: ${fmtMXN(moraNuevo)}`);
   }
 
   // Desglose ordinario
-  set('cs-capital', fmtMXN(d.capital_vigente));
-  set('cs-tasa',    fmtPct(d.tasa) + ' anual');
-  set('cs-dias',    `${dias} días`);
-  set('cs-result',  fmtMXN(interes));
-}
-
-function setQuick(days) {
-  const target = addDays(todayISO(), days);
-  document.getElementById('proj-to').value = target;
-  if (state.current) {
-    // Keep period start fixed to last amortization; only target date changes
-    document.getElementById('proj-from').value = getPeriodStart(state.current);
-  }
-  calcProj();
-}
-
-function setAniv() {
-  const anivDate = document.getElementById('qbtn-aniv').dataset.aniv;
-  if (!anivDate || !state.current) return;
-  document.getElementById('proj-to').value   = anivDate;
-  document.getElementById('proj-from').value = getPeriodStart(state.current);
-  calcProj();
+  set('cs-capital',  fmtMXN(d.capital_vigente));
+  set('cs-tasa',     fmtPct(d.tasa) + ' anual');
+  set('cs-dias',     diasProj > 0 ? `${totalDias} días` : '0 días');
+  set('cs-corte',    fmtMXN(intCorte));
+  set('cs-nuevo',    fmtMXN(intNuevo));
+  set('cs-result',   fmtMXN(totalIntOrdinario));
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

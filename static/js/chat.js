@@ -53,10 +53,10 @@ FÓRMULA DE INTERÉS MORATORIO:
 REGLAS:
 - Tasa es anual en porcentaje (ej: 23.7288 = 23.7288%)
 - Base de cálculo: 360 días (año comercial)
-- Corte de interés: ANIVERSARIO (mismo día del mes que la fecha de entrega)
-- Inicio del período: última amortización = un mes antes del próximo vencimiento
+- La base de datos tiene una FECHA DE CORTE — los saldos e intereses son a esa fecha
+- La proyección PARTE del corte: Int. Total = Int. al corte (de la base) + Int. nuevo (días adicionales × tasa diaria)
 - Día hábil posterior: si la fecha cae en inhábil/fin de semana, se mueve al siguiente día hábil
-- Si la disposición está VENCIDA, se debe proyectar interés moratorio sobre el capital en impago/vencido
+- "Con impago" se determina por SALDO en impago (capital_impago > 0 o interes_ordinario_impago > 0), NO por días
 
 GLOSARIO:
 - Capital Vigente: saldo activo sobre el que se calcula el interés ordinario
@@ -71,13 +71,20 @@ Responde en español, de forma concisa y profesional. Muestra fórmulas cuando h
 
   if (typeof state !== 'undefined' && state.current) {
     const d = state.current;
-    const from = document.getElementById('proj-from')?.value;
+    const corte = state.fechaCorte || new Date().toISOString().split('T')[0];
     const to   = document.getElementById('proj-to')?.value;
     let proj = '';
-    if (from && to) {
-      const dias    = Math.round((new Date(to) - new Date(from)) / 86400000);
-      const interes = d.capital_vigente * (d.tasa/100) / 360 * dias;
-      proj = `\nPROYECCIÓN EN PANTALLA: Período ${from} → ${to} = ${dias} días → Interés $${interes.toLocaleString('es-MX',{minimumFractionDigits:2})} MXN`;
+    if (to) {
+      const dias    = Math.round((new Date(to) - new Date(corte)) / 86400000);
+      const intCorte = d.interes_ordinario_vigente || 0;
+      const intNuevo = d.capital_vigente * (d.tasa/100) / 360 * Math.max(0, dias);
+      const totalInt = intCorte + intNuevo;
+      proj = `\nPROYECCIÓN EN PANTALLA:
+  Fecha corte base: ${corte}
+  Int. ordinario al corte: $${intCorte.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Proyección al: ${to} = ${dias} días adicionales
+  Int. nuevo proyectado: $${intNuevo.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Total ordinario: $${totalInt.toLocaleString('es-MX',{minimumFractionDigits:2})}`;
     }
     sys += `
 
