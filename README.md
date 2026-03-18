@@ -26,23 +26,19 @@ cd cartera-pro
 pip install -r requirements.txt
 ```
 
-### 2. Configurar Google Sheets
+### 2. Publicar el Google Sheet
 
-#### Crear Service Account en Google Cloud
-1. Ve a [console.cloud.google.com](https://console.cloud.google.com)
-2. Crea un proyecto nuevo (o usa uno existente)
-3. Habilita las APIs:
-   - **Google Sheets API**
-   - **Google Drive API**
-4. Ve a **Credenciales** → **Crear credenciales** → **Cuenta de servicio**
-5. Descarga el JSON de la cuenta de servicio → guárdalo como `credentials.json` en la raíz del proyecto
-6. Copia el email de la cuenta de servicio (termina en `@...gserviceaccount.com`)
+**No necesitas API keys ni credenciales.** Solo publicar el sheet:
 
-#### Compartir tu Google Sheet
-1. Abre tu Google Sheet con la CARTERA_TOTAL
-2. Haz clic en **Compartir**
-3. Agrega el email de la service account con rol **Editor** (o Lector si solo lees)
-4. Copia el ID del sheet desde la URL: `https://docs.google.com/spreadsheets/d/`**`ESTE_ES_EL_ID`**`/edit`
+1. Abre tu Google Sheet con la **CARTERA_TOTAL**
+2. Ve a **Archivo → Compartir → Publicar en la web**
+3. En el primer dropdown selecciona la hoja: **"Cartera Total"**
+4. En el segundo dropdown selecciona: **"Valores separados por comas (.csv)"**
+5. Haz clic en **"Publicar"** y confirma
+6. Copia el **ID del sheet** desde la URL del navegador:
+   `https://docs.google.com/spreadsheets/d/`**`ESTE_ES_EL_ID`**`/edit`
+
+> **¿Es seguro?** El sheet queda de solo lectura para quien tenga el link. Nadie puede editarlo. Si en algún momento quieres bloquearlo, en la misma pantalla hay un botón "Dejar de publicar".
 
 ### 3. Variables de entorno
 
@@ -57,7 +53,6 @@ Edita `.env`:
 ```env
 GOOGLE_SHEET_ID=1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms
 WORKSHEET_NAME=Cartera Total
-GOOGLE_CREDENTIALS_FILE=credentials.json
 ```
 
 ### 4. Correr localmente
@@ -95,11 +90,10 @@ En el panel de Railway → tu servicio → **Variables**:
 
 | Variable | Valor |
 |----------|-------|
-| `GOOGLE_SHEET_ID` | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms` |
+| `GOOGLE_SHEET_ID` | ID de tu sheet (de la URL) |
 | `WORKSHEET_NAME` | `Cartera Total` |
-| `GOOGLE_CREDENTIALS_JSON` | *Pega todo el contenido del JSON de tu service account como una sola línea* |
 
-> **Importante:** Para `GOOGLE_CREDENTIALS_JSON`, abre tu `credentials.json`, selecciona todo el contenido y pégalo directamente como valor de la variable. Railway lo maneja correctamente aunque tenga saltos de línea.
+Solo esas dos. Sin credenciales, sin JSON, sin nada más.
 
 ### 4. Deploy
 
