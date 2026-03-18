@@ -1,18 +1,17 @@
 """
 Cartera Pro — Backend
-FastAPI app que lee Google Sheets y expone la cartera procesada.
+FastAPI app que lee Google Sheets (público) y expone la cartera procesada.
+No requiere Service Account ni credenciales — solo el Sheet ID público.
 """
 
 import os
-import json
+import io
 import logging
 from datetime import datetime, date
 from typing import Optional
-import calendar
 
+import httpx
 import pandas as pd
-import gspread
-from google.oauth2.service_account import Credentials
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -41,10 +40,16 @@ _cache: dict = {
 }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SHEET_ID        = os.environ.get("GOOGLE_SHEET_ID", "")
-WORKSHEET_NAME  = os.environ.get("WORKSHEET_NAME", "Cartera Total")
-CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")  # JSON string
-CREDENTIALS_FILE = os.environ.get("GOOGLE_CREDENTIALS_FILE", "credentials.json")
+SHEET_ID       = os.environ.get("GOOGLE_SHEET_ID", "")
+WORKSHEET_NAME = os.environ.get("WORKSHEET_NAME", "Cartera Total")
+
+# URL pública de exportación CSV — el sheet debe estar publicado en la web
+def get_sheet_csv_url(sheet_id: str, worksheet: str) -> str:
+    from urllib.parse import quote
+    return (
+        f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+        f"/export?format=csv&sheet={quote(worksheet)}"
+    )
 
 # Column mapping — ajusta si el nombre exacto en tu sheet cambia
 COL_MAP = {
@@ -75,21 +80,6 @@ COL_MAP = {
     "folio_linea":              "FOLIO LINEA DE CRÉDITO",
     "tipo_credito":             "TIPO DE CRÉDITO",
 }
-
-# ── Google Sheets ─────────────────────────────────────────────────────────────
-def get_gc():
-    scopes = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    if CREDENTIALS_JSON:
-        cred_dict = json.loads(CREDENTIALS_JSON)
-        creds = Credentials.from_service_account_info(cred_dict, scopes=scopes)
-    elif os.path.exists(CREDENTIALS_FILE):
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
-    else:
-        raise RuntimeError("No Google credentials found. Set GOOGLE_CREDENTIALS_JSON or place credentials.json")
-    return gspread.authorize(creds)
 
 
 def safe_float(val, default=0.0) -> float:
@@ -183,21 +173,39 @@ def process_df(df: pd.DataFrame) -> list[dict]:
 
 
 def sync_from_sheets():
-    """Pull data from Google Sheets and update cache."""
+    """
+    Descarga el Google Sheet como CSV público y actualiza el cache.
+    Requiere que el sheet esté publicado:
+      Archivo → Compartir → Publicar en la web → CSV
+    """
     global _cache
+    if not SHEET_ID:
+        raise RuntimeError("GOOGLE_SHEET_ID no configurado")
+
+    url = get_sheet_csv_url(SHEET_ID, WORKSHEET_NAME)
+    log.info(f"Syncing from public sheet: {url[:80]}…")
+
     try:
-        log.info("Syncing from Google Sheets…")
-        gc = get_gc()
-        sh = gc.open_by_key(SHEET_ID)
-        ws = sh.worksheet(WORKSHEET_NAME)
-        raw = ws.get_all_records(numericise_ignore=["all"])
-        df = pd.DataFrame(raw)
+        with httpx.Client(timeout=60, follow_redirects=True) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+
+        csv_content = resp.content
+        df = pd.read_csv(io.BytesIO(csv_content), dtype=str, encoding="utf-8")
+        df.columns = [c.strip() for c in df.columns]  # strip whitespace from headers
+
         records = process_df(df)
         _cache["data"] = records
         _cache["last_sync"] = datetime.utcnow().isoformat() + "Z"
         _cache["error"] = None
         _cache["row_count"] = len(records)
         log.info(f"Sync OK — {len(records)} disposiciones vigentes")
+
+    except httpx.HTTPStatusError as exc:
+        msg = f"HTTP {exc.response.status_code} al leer el sheet. ¿Está publicado públicamente?"
+        log.error(msg)
+        _cache["error"] = msg
+        raise RuntimeError(msg)
     except Exception as exc:
         log.error(f"Sync error: {exc}")
         _cache["error"] = str(exc)
