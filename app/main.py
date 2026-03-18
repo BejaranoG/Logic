@@ -40,7 +40,7 @@ _cache: dict = {
 }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-SHEET_ID       = os.environ.get("GOOGLE_SHEET_ID", "")
+SHEET_ID       = os.environ.get("GOOGLE_SHEET_ID", "1z9SBMEGqzUgt_cXHAHOybXQdUMj6HLldrk-FQzeTeqI")
 WORKSHEET_NAME = os.environ.get("WORKSHEET_NAME", "Cartera Total")
 
 # URL pública de exportación CSV — el sheet debe estar publicado en la web
