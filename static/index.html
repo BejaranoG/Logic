@@ -133,7 +133,7 @@
 
     <!-- Recent / browse -->
     <div class="dash-section-title">
-      <span>Disposiciones Vigentes</span>
+      <span>Todas las Disposiciones</span>
       <span class="dash-hint">Usa el buscador para filtrar</span>
     </div>
     <div class="disposiciones-table-wrap">
@@ -198,6 +198,7 @@
           <div class="srow"><span>Capital vigente</span><span class="sv mono purple" id="s-vigente"></span></div>
           <div class="srow"><span>Capital en impago</span><span class="sv mono" id="s-impago"></span></div>
           <div class="srow"><span>Capital vencido exigible</span><span class="sv mono" id="s-vencido"></span></div>
+          <div class="srow"><span>Capital vencido no exigible</span><span class="sv mono" id="s-vencido-no-exig"></span></div>
         </div>
       </div>
       <div class="card">
@@ -216,9 +217,9 @@
       <div class="proj-header">
         <div class="proj-header-title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-          Proyección de Interés Ordinario
+          Proyección de Interés Ordinario y Moratorio
         </div>
-        <div class="proj-header-sub">Selecciona cualquier fecha y calcula el interés exacto a ese día</div>
+        <div class="proj-header-sub">Calcula interés ordinario y moratorio proyectado a cualquier fecha</div>
       </div>
       <div class="proj-body">
 
@@ -256,17 +257,19 @@
           <div class="pb-formula" id="pb-formula">—</div>
         </div>
 
-        <!-- Results -->
+        <!-- Projected interest — HERO result -->
+        <div class="proj-hero">
+          <div class="proj-hero-label">Interés Proyectado al <span id="proj-hero-date">—</span></div>
+          <div class="proj-hero-value" id="proj-hero-value">—</div>
+          <div class="proj-hero-sub" id="proj-hero-sub">— días · — /día</div>
+        </div>
+
+        <!-- Secondary results -->
         <div class="results-grid">
           <div class="res-card res-main">
             <div class="res-l">Capital Vigente</div>
             <div class="res-v purple" id="res-capital">—</div>
             <div class="res-sub">saldo activo</div>
-          </div>
-          <div class="res-card">
-            <div class="res-l">Interés Proyectado</div>
-            <div class="res-v accent" id="res-interes">—</div>
-            <div class="res-sub">sin IVA</div>
           </div>
           <div class="res-card">
             <div class="res-l">Intereses Vencidos</div>
@@ -278,16 +281,26 @@
             <div class="res-v red" id="res-cap-vec">—</div>
             <div class="res-sub">exigible</div>
           </div>
+          <div class="res-card">
+            <div class="res-l">Int. Ordinario Impago</div>
+            <div class="res-v yellow" id="res-int-imp-proj">—</div>
+            <div class="res-sub">períodos sin pago</div>
+          </div>
+          <div class="res-card res-mora">
+            <div class="res-l">Int. Moratorio Proyectado</div>
+            <div class="res-v red" id="res-moratorio-proj">—</div>
+            <div class="res-sub">penalización por impago</div>
+          </div>
           <div class="res-card res-total">
             <div class="res-l">Total Estimado</div>
             <div class="res-v green" id="res-total">—</div>
-            <div class="res-sub">interés + vencidos + cap</div>
+            <div class="res-sub">interés + moratorio + vencidos</div>
           </div>
         </div>
 
-        <!-- Desglose -->
+        <!-- Desglose Ordinario -->
         <details class="desglose" open>
-          <summary>Desglose del cálculo</summary>
+          <summary>Desglose del Interés Ordinario</summary>
           <div class="calc-steps">
             <div class="cs"><div class="cs-n">1</div><div class="cs-b"><div class="cs-l">Capital Vigente</div><div class="cs-v" id="cs-capital">—</div></div></div>
             <div class="cs-op">×</div>
@@ -295,7 +308,22 @@
             <div class="cs-op">÷ 360 ×</div>
             <div class="cs"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días período</div><div class="cs-v" id="cs-dias">—</div></div></div>
             <div class="cs-op">=</div>
-            <div class="cs cs-result"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés</div><div class="cs-v accent" id="cs-result">—</div></div></div>
+            <div class="cs cs-result"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés Ordinario</div><div class="cs-v accent" id="cs-result">—</div></div></div>
+          </div>
+        </details>
+
+        <!-- Desglose Moratorio -->
+        <details class="desglose mora-desglose" id="mora-section" style="display:none" open>
+          <summary>Desglose del Interés Moratorio</summary>
+          <div class="mora-formula-bar" id="mora-formula">—</div>
+          <div class="calc-steps">
+            <div class="cs cs-mora"><div class="cs-n">1</div><div class="cs-b"><div class="cs-l">Capital Impago/Vencido</div><div class="cs-v" id="mora-capital">—</div></div></div>
+            <div class="cs-op">×</div>
+            <div class="cs cs-mora"><div class="cs-n">2</div><div class="cs-b"><div class="cs-l">Tasa Moratoria</div><div class="cs-v" id="mora-tasa">—</div></div></div>
+            <div class="cs-op">÷ 360 ×</div>
+            <div class="cs cs-mora"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días impago</div><div class="cs-v" id="mora-dias">—</div></div></div>
+            <div class="cs-op">=</div>
+            <div class="cs cs-result-mora"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés Moratorio</div><div class="cs-v red" id="mora-result">—</div></div></div>
           </div>
         </details>
       </div>
