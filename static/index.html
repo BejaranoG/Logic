@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cartera Pro · Proyección de Saldos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-head">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="1" y="1" width="6" height="6" rx="1" fill="white"/>
+          <rect x="9" y="1" width="6" height="6" rx="1" fill="white" opacity=".6"/>
+          <rect x="1" y="9" width="6" height="6" rx="1" fill="white" opacity=".6"/>
+          <rect x="9" y="9" width="6" height="6" rx="1" fill="white" opacity=".3"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <span class="logo-name">Cartera Pro</span>
+        <span class="logo-sub">Proyección de Saldos</span>
+      </div>
+    </div>
+    <div class="sync-row" id="sync-row">
+      <span class="sync-dot" id="sync-dot"></span>
+      <span class="sync-label" id="sync-label">Cargando…</span>
+      <button class="sync-btn" id="sync-btn" onclick="triggerSync()" title="Sincronizar con Google Sheets">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="sidebar-search-wrap">
+    <div class="search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="search-input" placeholder="Cliente, folio, contrato…" oninput="applyFilters()">
+      <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none">×</button>
+    </div>
+  </div>
+
+  <div class="sidebar-filters">
+    <button class="filter-pill active" data-f="all"     onclick="setFilter(this)">Todos</button>
+    <button class="filter-pill"        data-f="prev"    onclick="setFilter(this)">Preventivo</button>
+    <button class="filter-pill warn"   data-f="impago"  onclick="setFilter(this)">Impago</button>
+    <button class="filter-pill danger" data-f="vencido" onclick="setFilter(this)">Vencido</button>
+  </div>
+
+  <div class="sidebar-sort">
+    <select id="sort-select" onchange="applyFilters()">
+      <option value="cliente">Ordenar: A–Z Cliente</option>
+      <option value="capital_desc">Mayor Capital</option>
+      <option value="vto_asc">Próximo Vencimiento</option>
+      <option value="folio_asc">Folio ↑</option>
+    </select>
+  </div>
+
+  <div class="sidebar-list" id="sidebar-list">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <span>Cargando cartera…</span>
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <span id="footer-count">—</span>
+    <span id="footer-capital">—</span>
+  </div>
+</aside>
+
+<!-- ── MAIN ── -->
+<div class="main">
+  <header class="topbar">
+    <div class="breadcrumb" id="breadcrumb">
+      <span class="bc-root">Disposiciones</span>
+    </div>
+    <div class="topbar-actions">
+      <div id="topbar-tags"></div>
+      <div class="today-chip">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span id="today-label"></span>
+      </div>
+    </div>
+  </header>
+
+  <div class="content" id="content">
+    <!-- EMPTY STATE -->
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      </div>
+      <h3>Selecciona una disposición</h3>
+      <p>Elige una disposición del panel izquierdo para ver su proyección de saldos</p>
+    </div>
+
+    <!-- DETAIL PANEL (hidden until selection) -->
+    <div id="detail" style="display:none">
+
+      <!-- ── HERO STRIP ── -->
+      <div class="hero-strip">
+        <div class="hero-main">
+          <div class="hero-id" id="h-folio"></div>
+          <div class="hero-name" id="h-cliente"></div>
+          <div class="hero-meta-row">
+            <span id="h-contrato"></span>
+            <span class="sep">·</span>
+            <span id="h-ejecutivo"></span>
+            <span class="sep">·</span>
+            <span id="h-sucursal"></span>
+            <span class="sep">·</span>
+            <span id="h-producto" class="muted"></span>
+          </div>
+        </div>
+        <div class="hero-kpis">
+          <div class="hkpi">
+            <div class="hkpi-l">Capital Vigente</div>
+            <div class="hkpi-v blue" id="hk-capital"></div>
+          </div>
+          <div class="hkpi">
+            <div class="hkpi-l">Tasa Ordinaria Anual</div>
+            <div class="hkpi-v" id="hk-tasa"></div>
+          </div>
+          <div class="hkpi">
+            <div class="hkpi-l">Interés Diario</div>
+            <div class="hkpi-v green" id="hk-diario"></div>
+          </div>
+          <div class="hkpi">
+            <div class="hkpi-l">Próx. Vencimiento</div>
+            <div class="hkpi-v" id="hk-vto"></div>
+            <div class="hkpi-sub" id="hk-vto-sub"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PROJECTION CARD ── -->
+      <div class="proj-card">
+        <div class="proj-card-header">
+          <div class="proj-card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Proyección de Interés Ordinario
+          </div>
+          <div class="proj-card-desc">Selecciona cualquier fecha y calcula el interés exacto a ese día</div>
+        </div>
+
+        <div class="proj-body">
+          <!-- Date controls -->
+          <div class="date-controls">
+            <div class="dc-group">
+              <label class="dc-label">Fecha inicio período</label>
+              <div class="dc-input-wrap">
+                <input type="date" id="proj-from" class="dc-input" onchange="calcProj()">
+                <div class="dc-hint" id="hint-from"></div>
+              </div>
+            </div>
+            <div class="dc-arrow">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </div>
+            <div class="dc-group">
+              <label class="dc-label">Fecha proyección <span class="dc-required">*</span></label>
+              <div class="dc-input-wrap">
+                <input type="date" id="proj-to" class="dc-input proj-to-main" onchange="calcProj()">
+                <div class="dc-hint" id="hint-to"></div>
+              </div>
+            </div>
+            <div class="dc-quick">
+              <label class="dc-label">Acceso rápido</label>
+              <div class="quick-btns">
+                <button class="qbtn" onclick="setQuick(7)">+7d</button>
+                <button class="qbtn" onclick="setQuick(15)">+15d</button>
+                <button class="qbtn" onclick="setQuick(30)">+30d</button>
+                <button class="qbtn" onclick="setQuick(60)">+60d</button>
+                <button class="qbtn qbtn-aniv" id="qbtn-aniv" onclick="setAniv()">Aniversario</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Period info bar -->
+          <div class="period-bar" id="period-bar">
+            <div class="pb-item">
+              <span class="pb-label">Período</span>
+              <span class="pb-val" id="pb-period">—</span>
+            </div>
+            <div class="pb-item">
+              <span class="pb-label">Días calculados</span>
+              <span class="pb-val accent" id="pb-dias">—</span>
+            </div>
+            <div class="pb-item">
+              <span class="pb-label">Interés diario</span>
+              <span class="pb-val" id="pb-diario">—</span>
+            </div>
+            <div class="pb-formula" id="pb-formula">—</div>
+          </div>
+
+          <!-- Result strip -->
+          <div class="result-strip">
+            <div class="rs-card rs-main">
+              <div class="rs-label">Interés Proyectado</div>
+              <div class="rs-value accent" id="rs-interes">—</div>
+              <div class="rs-sub">sin IVA</div>
+            </div>
+            <div class="rs-plus">+</div>
+            <div class="rs-card">
+              <div class="rs-label">Capital a Pagar</div>
+              <div class="rs-value" id="rs-capital-pago">—</div>
+              <div class="rs-sub" id="rs-cap-sub">según cobranza</div>
+            </div>
+            <div class="rs-equals">=</div>
+            <div class="rs-card rs-total">
+              <div class="rs-label">Total Cobro Proyectado</div>
+              <div class="rs-value green" id="rs-total">—</div>
+              <div class="rs-sub">interés + capital</div>
+            </div>
+          </div>
+
+          <!-- Desglose detallado -->
+          <details class="desglose-details" open>
+            <summary class="desglose-summary">Desglose del cálculo</summary>
+            <div class="desglose-body">
+              <div class="calc-steps">
+                <div class="calc-step">
+                  <div class="cs-num">1</div>
+                  <div class="cs-body">
+                    <div class="cs-label">Capital Vigente</div>
+                    <div class="cs-val" id="cs-capital">—</div>
+                  </div>
+                </div>
+                <div class="calc-op">×</div>
+                <div class="calc-step">
+                  <div class="cs-num">2</div>
+                  <div class="cs-body">
+                    <div class="cs-label">Tasa Base Ordinaria</div>
+                    <div class="cs-val" id="cs-tasa">—</div>
+                  </div>
+                </div>
+                <div class="calc-op">÷ 365 ×</div>
+                <div class="calc-step">
+                  <div class="cs-num">3</div>
+                  <div class="cs-body">
+                    <div class="cs-label">Días del Período</div>
+                    <div class="cs-val" id="cs-dias">—</div>
+                  </div>
+                </div>
+                <div class="calc-op">=</div>
+                <div class="calc-step calc-result">
+                  <div class="cs-num">✓</div>
+                  <div class="cs-body">
+                    <div class="cs-label">Interés Calculado</div>
+                    <div class="cs-val accent" id="cs-result">—</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- ── SALDOS AL CORTE ── -->
+      <div class="two-col">
+        <div class="info-section">
+          <div class="is-head">Saldos de Capital al Corte</div>
+          <div class="is-body">
+            <div class="is-row"><span>Capital dispuesto original</span><span class="is-val mono" id="is-dispuesto"></span></div>
+            <div class="is-row"><span>Capital vigente (activo)</span><span class="is-val mono accent" id="is-vigente"></span></div>
+            <div class="is-row"><span>Capital impago</span><span class="is-val mono" id="is-impago"></span></div>
+            <div class="is-row"><span>Capital vencido exigible</span><span class="is-val mono" id="is-venc-ex"></span></div>
+          </div>
+        </div>
+        <div class="info-section">
+          <div class="is-head">Saldos de Interés al Corte</div>
+          <div class="is-body">
+            <div class="is-row"><span>Interés ordinario vigente</span><span class="is-val mono accent" id="is-int-vig"></span></div>
+            <div class="is-row"><span>Interés ordinario impago</span><span class="is-val mono" id="is-int-imp"></span></div>
+            <div class="is-row"><span>Interés moratorio</span><span class="is-val mono" id="is-moratorio"></span></div>
+            <div class="is-row"><span>Días de impago</span><span class="is-val mono" id="is-dias-imp"></span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── INFORMACIÓN GENERAL ── -->
+      <div class="info-section">
+        <div class="is-head">Información General del Crédito</div>
+        <div class="info-grid4">
+          <div class="ig-cell"><div class="ig-label">Fecha de Entrega</div><div class="ig-val mono" id="ig-entrega"></div></div>
+          <div class="ig-cell"><div class="ig-label">Próx. Vencimiento</div><div class="ig-val mono" id="ig-prox-vto"></div></div>
+          <div class="ig-cell"><div class="ig-label">Venc. Contrato</div><div class="ig-val mono" id="ig-vto-cont"></div></div>
+          <div class="ig-cell"><div class="ig-label">Tasa Moratoria</div><div class="ig-val mono" id="ig-tasa-mor"></div></div>
+          <div class="ig-cell"><div class="ig-label">Día Aniversario</div><div class="ig-val" id="ig-aniv"></div></div>
+          <div class="ig-cell"><div class="ig-label">Tipo Crédito</div><div class="ig-val" id="ig-tipo"></div></div>
+          <div class="ig-cell"><div class="ig-label">Status Cobranza</div><div class="ig-val" id="ig-status"></div></div>
+          <div class="ig-cell"><div class="ig-label">Folio Línea</div><div class="ig-val mono" id="ig-linea"></div></div>
+        </div>
+      </div>
+
+    </div><!-- /detail -->
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
