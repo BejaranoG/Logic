@@ -57,7 +57,7 @@ def get_sheet_csv_url(sheet_id: str, worksheet: str) -> str:
 COL_MAP = {
     "folio":                   "FOLIO DE DISPOSICIÓN",
     "cliente":                 "CLIENTE",
-    "ejecutivo":               "EJECUTIVO DISPOSICIÓN",
+    "ejecutivo":               "EJECUTIVO LÍNEA",
     "sucursal":                "SUCURSAL",
     "contrato":                "NÚMERO DEL CONTRATO",
     "producto":                "PRODUCTO FINANCIERO DISPOSICIÓN",
@@ -118,9 +118,7 @@ def process_df(df: pd.DataFrame) -> list[dict]:
     """Transform raw dataframe into clean disposicion records."""
     records = []
 
-    # Filter: only VIGENTE, real clients
-    if "STATUS" in df.columns:
-        df = df[df["STATUS"].astype(str).str.upper() == "VIGENTE"]
+    # Filter: real clients only (include both VIGENTE and VENCIDO)
     df = df[df["CLIENTE"].notna() & (df["CLIENTE"].astype(str).str.strip() != "") & (df["CLIENTE"].astype(str) != "--")]
 
     for _, row in df.iterrows():
@@ -141,14 +139,9 @@ def process_df(df: pd.DataFrame) -> list[dict]:
                 pass
 
         capital_vigente = safe_float(g("capital_vigente"))
-        if capital_vigente <= 0 or tasa_raw <= 0:
-            continue
-
-        folio_raw = g("folio")
-        try:
-            folio = int(float(str(folio_raw))) if folio_raw else 0
-        except Exception:
-            folio = 0
+        capital_impago  = safe_float(g("capital_impago"))
+        cap_venc_exig   = safe_float(g("capital_vencido_exigible"))
+        cap_venc_no_exig = safe_float(g("capital_vencido_no_exig"))
 
         # Intereses vencidos = ord vencido exig + ord vencido no exig + ref vencido exig + ref vencido no exig
         int_vencidos = (
@@ -158,6 +151,30 @@ def process_df(df: pd.DataFrame) -> list[dict]:
             safe_float(g("int_ref_venc_no_exig"))
         )
 
+        # Capital total para determinar si hay algo que mostrar
+        capital_total = capital_vigente + capital_impago + cap_venc_exig + cap_venc_no_exig
+
+        # Skip if truly nothing to show
+        if tasa_raw <= 0 and capital_total <= 0 and int_vencidos <= 0:
+            continue
+
+        # Tasa moratoria: parse as float, default to 2x tasa ordinaria
+        tasa_mor_raw = g("tasa_moratoria")
+        tasa_moratoria_val = safe_float(tasa_mor_raw, default=0.0)
+        if tasa_moratoria_val <= 0:
+            tasa_moratoria_val = round(tasa_raw * 2, 4)
+
+        folio_raw = g("folio")
+        try:
+            folio = int(float(str(folio_raw))) if folio_raw else 0
+        except Exception:
+            folio = 0
+
+        # Auto-classify as VENCIDO if any vencido balance exists
+        status_raw = str(g("status") or "").strip().upper()
+        if int_vencidos > 0 or cap_venc_exig > 0:
+            status_raw = "VENCIDO"
+
         records.append({
             "folio":                    folio,
             "cliente":                  str(g("cliente") or "").strip(),
@@ -165,16 +182,17 @@ def process_df(df: pd.DataFrame) -> list[dict]:
             "sucursal":                 str(g("sucursal") or "").strip(),
             "contrato":                 str(g("contrato") or "").strip(),
             "producto":                 str(g("producto") or "").strip(),
-            "status":                   str(g("status") or "").strip().upper(),
+            "status":                   status_raw,
             "status_cobr":              str(g("status_cobr") or "").strip(),
             "tipo_credito":             str(g("tipo_credito") or "").strip(),
             "dia_habil":                str(g("dia_habil") or "SIN DIA HABIL POSTERIOR").strip(),
             "capital_vigente":          round(capital_vigente, 2),
-            "capital_impago":           round(safe_float(g("capital_impago")), 2),
-            "capital_vencido":          round(safe_float(g("capital_vencido_exigible")), 2),
+            "capital_impago":           round(capital_impago, 2),
+            "capital_vencido":          round(cap_venc_exig, 2),
+            "capital_vencido_no_exig":  round(cap_venc_no_exig, 2),
             "capital_dispuesto":        round(safe_float(g("capital_dispuesto")), 2),
             "tasa":                     round(tasa_raw, 4),
-            "tasa_moratoria":           str(g("tasa_moratoria") or "--").strip(),
+            "tasa_moratoria":           round(tasa_moratoria_val, 4),
             "fecha_entrega":            fecha_entrega_str,
             "fecha_vto":                fecha_vto_str,
             "fecha_contrato_inicio":    safe_date(g("fecha_contrato_inicio")),
