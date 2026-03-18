@@ -166,102 +166,127 @@
       <span class="detail-nav-current" id="detail-nav-folio"></span>
     </div>
 
-    <!-- Hero -->
-    <div class="hero">
-      <div class="hero-top">
-        <div>
-          <div class="hero-folio" id="h-folio"></div>
-          <div class="hero-name" id="h-cliente"></div>
-          <div class="hero-meta">
-            <span id="h-contrato"></span><span class="sep">·</span>
-            <span id="h-ejecutivo"></span><span class="sep">·</span>
-            <span id="h-sucursal"></span><span class="sep">·</span>
-            <span class="muted" id="h-producto"></span>
-          </div>
-        </div>
-        <div id="h-status-tag"></div>
+    <!-- ═══ HEADER BAR ═══ -->
+    <div class="disp-header">
+      <div class="disp-header-text">
+        Disposición Activa <strong>#<span id="h-folio">—</span></strong> con estatus
+        <span class="disp-status-inline" id="h-status-inline">Vigente</span>
+        de <strong id="h-cliente">—</strong>
       </div>
-      <div class="hero-kpis">
-        <div class="hkpi"><div class="hkpi-l">Capital Vigente</div><div class="hkpi-v purple" id="hk-capital"></div></div>
-        <div class="hkpi"><div class="hkpi-l">Tasa Ordinaria Anual</div><div class="hkpi-v" id="hk-tasa"></div></div>
-        <div class="hkpi"><div class="hkpi-l">Interés Diario</div><div class="hkpi-v green" id="hk-diario"></div></div>
-        <div class="hkpi"><div class="hkpi-l">Próx. Vencimiento</div><div class="hkpi-v" id="hk-vto"></div><div class="hkpi-sub" id="hk-vto-sub"></div></div>
+      <div class="disp-header-meta">
+        <span id="h-contrato"></span><span class="sep">·</span>
+        <span id="h-ejecutivo"></span><span class="sep">·</span>
+        <span id="h-sucursal"></span><span class="sep">·</span>
+        <span class="muted" id="h-producto"></span>
       </div>
     </div>
 
-    <!-- Saldos actuales -->
-    <div class="two-col">
-      <div class="card">
-        <div class="card-head">Saldos de Capital al Corte</div>
-        <div class="card-body">
-          <div class="srow"><span>Capital dispuesto original</span><span class="sv mono" id="s-dispuesto"></span></div>
-          <div class="srow"><span>Capital vigente</span><span class="sv mono purple" id="s-vigente"></span></div>
-          <div class="srow"><span>Capital en impago</span><span class="sv mono" id="s-impago"></span></div>
-          <div class="srow"><span>Capital vencido exigible</span><span class="sv mono" id="s-vencido"></span></div>
-          <div class="srow"><span>Capital vencido no exigible</span><span class="sv mono" id="s-vencido-no-exig"></span></div>
-        </div>
+    <!-- ═══ TIMELINE BAR ═══ -->
+    <div class="timeline-bar">
+      <div class="tl-date tl-start" id="tl-start">—</div>
+      <div class="tl-track">
+        <div class="tl-progress" id="tl-progress" style="width:0%"></div>
+        <div class="tl-marker" id="tl-marker" style="left:0%"></div>
       </div>
-      <div class="card">
-        <div class="card-head">Saldos de Interés al Corte</div>
-        <div class="card-body">
-          <div class="srow"><span>Interés ordinario vigente</span><span class="sv mono purple" id="s-int-ord"></span></div>
-          <div class="srow"><span>Interés ordinario impago</span><span class="sv mono" id="s-int-imp"></span></div>
-          <div class="srow"><span>Intereses vencidos</span><span class="sv mono" id="s-int-vec"></span></div>
-          <div class="srow"><span>Interés moratorio</span><span class="sv mono" id="s-moratorio"></span></div>
-        </div>
+      <div class="tl-date tl-end" id="tl-end">—</div>
+      <div class="tl-selector">
+        <label class="tl-sel-label">Seleccionar día</label>
+        <input type="date" id="proj-to" class="tl-sel-input" onchange="calcProj()">
       </div>
     </div>
 
-    <!-- PROJECTION CARD -->
+    <!-- ═══ MAIN BODY: Status Card + Saldos Table ═══ -->
+    <div class="disp-body">
+      <!-- Left: Status Card -->
+      <div class="status-card" id="status-card">
+        <div class="sc-check" id="sc-check">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="sc-status-label" id="sc-status-label">Crédito vigente</div>
+        <div class="sc-etapa" id="sc-etapa">Etapa 1</div>
+        <div class="sc-summary">
+          <div class="sc-row"><span class="sc-label">Saldo sin atraso</span><span class="sc-val sc-val-big" id="sc-sin-atraso">—</span></div>
+          <div class="sc-row"><span class="sc-label">Saldo con atraso</span><span class="sc-val" id="sc-con-atraso">—</span></div>
+          <div class="sc-row"><span class="sc-label">Saldo total</span><span class="sc-val sc-val-big" id="sc-total">—</span></div>
+          <div class="sc-divider"></div>
+          <div class="sc-row"><span class="sc-label">Deuda al día de hoy</span><span class="sc-val sc-val-deuda" id="sc-deuda">—</span></div>
+        </div>
+      </div>
+
+      <!-- Right: Saldos Table -->
+      <div class="saldos-table-wrap">
+        <table class="saldos-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Capital (<span id="st-cap-total">—</span>)</th>
+              <th>Interés ordinario</th>
+              <th>Interés moratorio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="st-label">Vigente</td>
+              <td class="st-val" id="st-cap-vig">—</td>
+              <td class="st-val" id="st-int-vig">—</td>
+              <td class="st-val st-zero">$0.00 MXN</td>
+            </tr>
+            <tr>
+              <td class="st-label">Impago</td>
+              <td class="st-val" id="st-cap-imp">—</td>
+              <td class="st-val" id="st-int-imp">—</td>
+              <td class="st-val st-zero">$0.00 MXN</td>
+            </tr>
+            <tr>
+              <td class="st-label">Vencido exigible</td>
+              <td class="st-val" id="st-cap-vec">—</td>
+              <td class="st-val" id="st-int-vec-exig">—</td>
+              <td class="st-val" id="st-mora">—</td>
+            </tr>
+            <tr>
+              <td class="st-label">Vencido no exigible</td>
+              <td class="st-val" id="st-cap-vec-ne">—</td>
+              <td class="st-val" id="st-int-vec-ne">—</td>
+              <td class="st-val st-zero">$0.00 MXN</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ HERO KPIS ═══ -->
+    <div class="hero-kpis">
+      <div class="hkpi"><div class="hkpi-l">Tasa Ordinaria Anual</div><div class="hkpi-v" id="hk-tasa"></div></div>
+      <div class="hkpi"><div class="hkpi-l">Tasa Moratoria</div><div class="hkpi-v" id="hk-tasa-mora"></div></div>
+      <div class="hkpi"><div class="hkpi-l">Interés Diario</div><div class="hkpi-v green" id="hk-diario"></div></div>
+      <div class="hkpi"><div class="hkpi-l">Próx. Vencimiento</div><div class="hkpi-v" id="hk-vto"></div><div class="hkpi-sub" id="hk-vto-sub"></div></div>
+    </div>
+
+    <!-- ═══ PROJECTION CARD ═══ -->
     <div class="proj-card">
       <div class="proj-header">
         <div class="proj-header-title">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           Proyección de Interés Ordinario y Moratorio
         </div>
-        <div class="proj-header-sub">Calcula interés ordinario y moratorio proyectado a cualquier fecha</div>
+        <div class="proj-header-sub">Parte desde la fecha de corte y proyecta al día seleccionado</div>
       </div>
       <div class="proj-body">
 
-        <!-- Date controls -->
-        <div class="date-row">
-          <div class="dg">
-            <label class="dl">Inicio del período</label>
-            <input type="date" id="proj-from" class="di" onchange="calcProj()">
-            <div class="dh" id="hint-from"></div>
-          </div>
-          <div class="darrow">→</div>
-          <div class="dg">
-            <label class="dl">Fecha proyección <span class="dr">*</span></label>
-            <input type="date" id="proj-to" class="di di-main" onchange="calcProj()">
-            <div class="dh" id="hint-to"></div>
-          </div>
-          <div class="dg">
-            <label class="dl">Acceso rápido</label>
-            <div class="quick-row">
-              <button class="qbtn" onclick="setQuick(7)">+7d</button>
-              <button class="qbtn" onclick="setQuick(15)">+15d</button>
-              <button class="qbtn" onclick="setQuick(30)">+30d</button>
-              <button class="qbtn" onclick="setQuick(60)">+60d</button>
-              <button class="qbtn qbtn-aniv" id="qbtn-aniv" onclick="setAniv()">Aniversario</button>
-            </div>
-          </div>
-        </div>
-
         <!-- Period info -->
         <div class="period-bar">
-          <div class="pb-item"><span class="pb-l">Período</span><span class="pb-v" id="pb-period">—</span></div>
-          <div class="pb-item"><span class="pb-l">Días</span><span class="pb-v accent" id="pb-dias">—</span></div>
-          <div class="pb-item"><span class="pb-l">Día hábil</span><span class="pb-v" id="pb-habil">—</span></div>
+          <div class="pb-item"><span class="pb-l">Corte base</span><span class="pb-v green" id="pb-corte">—</span></div>
+          <div class="pb-item"><span class="pb-l">Proyección al</span><span class="pb-v accent" id="pb-target">—</span></div>
+          <div class="pb-item"><span class="pb-l">Días adicionales</span><span class="pb-v accent" id="pb-dias">—</span></div>
           <div class="pb-item"><span class="pb-l">Interés diario</span><span class="pb-v" id="pb-diario">—</span></div>
-          <div class="pb-formula" id="pb-formula">—</div>
+          <div class="pb-item"><span class="pb-l">Día hábil</span><span class="pb-v" id="pb-habil">—</span></div>
         </div>
 
         <!-- Projected interest — HERO result -->
         <div class="proj-hero">
-          <div class="proj-hero-label">Interés Proyectado al <span id="proj-hero-date">—</span></div>
+          <div class="proj-hero-label">Interés Ordinario Total al <span id="proj-hero-date">—</span></div>
           <div class="proj-hero-value" id="proj-hero-value">—</div>
-          <div class="proj-hero-sub" id="proj-hero-sub">— días · — /día</div>
+          <div class="proj-hero-sub" id="proj-hero-sub">—</div>
         </div>
 
         <!-- Secondary results -->
@@ -269,32 +294,26 @@
           <div class="res-card res-main">
             <div class="res-l">Capital Vigente</div>
             <div class="res-v purple" id="res-capital">—</div>
-            <div class="res-sub">saldo activo</div>
           </div>
           <div class="res-card">
-            <div class="res-l">Intereses Vencidos</div>
+            <div class="res-l">Int. Vencidos</div>
             <div class="res-v red" id="res-int-vec">—</div>
-            <div class="res-sub">ord. + refinanciado</div>
           </div>
           <div class="res-card">
             <div class="res-l">Capital Vencido</div>
             <div class="res-v red" id="res-cap-vec">—</div>
-            <div class="res-sub">exigible</div>
           </div>
           <div class="res-card">
-            <div class="res-l">Int. Ordinario Impago</div>
+            <div class="res-l">Int. Ord. Impago</div>
             <div class="res-v yellow" id="res-int-imp-proj">—</div>
-            <div class="res-sub">períodos sin pago</div>
           </div>
           <div class="res-card res-mora">
-            <div class="res-l">Int. Moratorio Proyectado</div>
+            <div class="res-l">Int. Moratorio Total</div>
             <div class="res-v red" id="res-moratorio-proj">—</div>
-            <div class="res-sub">penalización por impago</div>
           </div>
           <div class="res-card res-total">
             <div class="res-l">Total Estimado</div>
             <div class="res-v green" id="res-total">—</div>
-            <div class="res-sub">interés + moratorio + vencidos</div>
           </div>
         </div>
 
@@ -302,13 +321,15 @@
         <details class="desglose" open>
           <summary>Desglose del Interés Ordinario</summary>
           <div class="calc-steps">
-            <div class="cs"><div class="cs-n">1</div><div class="cs-b"><div class="cs-l">Capital Vigente</div><div class="cs-v" id="cs-capital">—</div></div></div>
-            <div class="cs-op">×</div>
-            <div class="cs"><div class="cs-n">2</div><div class="cs-b"><div class="cs-l">Tasa Anual</div><div class="cs-v" id="cs-tasa">—</div></div></div>
-            <div class="cs-op">÷ 360 ×</div>
-            <div class="cs"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días período</div><div class="cs-v" id="cs-dias">—</div></div></div>
+            <div class="cs cs-corte-box"><div class="cs-n">①</div><div class="cs-b"><div class="cs-l">Al Corte (base)</div><div class="cs-v green" id="cs-corte">—</div></div></div>
+            <div class="cs-op">+</div>
+            <div class="cs"><div class="cs-n">②</div><div class="cs-b"><div class="cs-l">Proyectado nuevo</div><div class="cs-v" id="cs-nuevo">—</div></div></div>
             <div class="cs-op">=</div>
-            <div class="cs cs-result"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés Ordinario</div><div class="cs-v accent" id="cs-result">—</div></div></div>
+            <div class="cs cs-result"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Total Ordinario</div><div class="cs-v accent" id="cs-result">—</div></div></div>
+          </div>
+          <div class="calc-detail-row">
+            <span class="cd-label">Cálculo nuevo:</span>
+            <span class="cd-value"><span id="cs-capital">—</span> × <span id="cs-tasa">—</span> ÷ 360 × <span id="cs-dias">—</span></span>
           </div>
         </details>
 
@@ -321,15 +342,15 @@
             <div class="cs-op">×</div>
             <div class="cs cs-mora"><div class="cs-n">2</div><div class="cs-b"><div class="cs-l">Tasa Moratoria</div><div class="cs-v" id="mora-tasa">—</div></div></div>
             <div class="cs-op">÷ 360 ×</div>
-            <div class="cs cs-mora"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días impago</div><div class="cs-v" id="mora-dias">—</div></div></div>
+            <div class="cs cs-mora"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días adicionales</div><div class="cs-v" id="mora-dias">—</div></div></div>
             <div class="cs-op">=</div>
-            <div class="cs cs-result-mora"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés Moratorio</div><div class="cs-v red" id="mora-result">—</div></div></div>
+            <div class="cs cs-result-mora"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Total Moratorio</div><div class="cs-v red" id="mora-result">—</div></div></div>
           </div>
         </details>
       </div>
     </div>
 
-    <!-- Info general -->
+    <!-- ═══ INFO GENERAL ═══ -->
     <div class="card" style="margin-bottom:80px">
       <div class="card-head">Información General</div>
       <div class="info-grid">
