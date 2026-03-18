@@ -46,19 +46,25 @@ Fecha actual: ${today}
 FÓRMULA DE INTERÉS ORDINARIO (base 360 días):
   Interés = Capital Vigente × (Tasa Base Ordinaria / 100) / 360 × Días del Período
 
+FÓRMULA DE INTERÉS MORATORIO:
+  Interés Moratorio = (2 × Tasa Ordinaria) × (Capital Impago + Capital Vencido) / 360 × Días de Impago
+  La tasa moratoria es 2 veces la tasa ordinaria por default (puede variar por contrato)
+
 REGLAS:
 - Tasa es anual en porcentaje (ej: 23.7288 = 23.7288%)
 - Base de cálculo: 360 días (año comercial)
 - Corte de interés: ANIVERSARIO (mismo día del mes que la fecha de entrega)
 - Inicio del período: última amortización = un mes antes del próximo vencimiento
 - Día hábil posterior: si la fecha cae en inhábil/fin de semana, se mueve al siguiente día hábil
+- Si la disposición está VENCIDA, se debe proyectar interés moratorio sobre el capital en impago/vencido
 
 GLOSARIO:
-- Capital Vigente: saldo activo sobre el que se calcula el interés
+- Capital Vigente: saldo activo sobre el que se calcula el interés ordinario
 - Capital Impago: capital que venció pero aún no es exigible
 - Capital Vencido Exigible: ya exigible y no pagado (cartera vencida)
+- Capital Vencido No Exigible: vencido pero aún no exigible por plazos legales
 - Intereses Vencidos: ordinario + refinanciado vencido (exigible y no exigible)
-- Interés Moratorio: penalización por impago sobre tasa moratoria
+- Interés Moratorio: penalización calculada como 2×tasa_ordinaria sobre capital impago/vencido
 - Días de Impago: días desde el último pago
 
 Responde en español, de forma concisa y profesional. Muestra fórmulas cuando hagas cálculos.`;
@@ -78,23 +84,26 @@ Responde en español, de forma concisa y profesional. Muestra fórmulas cuando h
 ═══════════════ DISPOSICIÓN ACTIVA ═══════════════
 Folio: #${d.folio} | Cliente: ${d.cliente}
 Contrato: ${d.contrato} | Ejecutivo: ${d.ejecutivo}
-Tasa ordinaria: ${d.tasa}% | Tasa moratoria: ${d.tasa_moratoria}
+Status: ${d.status}
+Tasa ordinaria: ${d.tasa}% | Tasa moratoria: ${d.tasa_moratoria}%
 Día aniversario: ${d.aniv_day} | Día hábil: ${d.dia_habil}
 
 CAPITAL:
   Vigente:  $${d.capital_vigente.toLocaleString('es-MX',{minimumFractionDigits:2})}
   Impago:   $${d.capital_impago.toLocaleString('es-MX',{minimumFractionDigits:2})}
-  Vencido:  $${d.capital_vencido.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Vencido Exigible:  $${d.capital_vencido.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Vencido No Exigible:  $${(d.capital_vencido_no_exig||0).toLocaleString('es-MX',{minimumFractionDigits:2})}
 
 INTERÉS:
   Ordinario vigente: $${d.interes_ordinario_vigente.toLocaleString('es-MX',{minimumFractionDigits:2})}
   Ordinario impago:  $${d.interes_ordinario_impago.toLocaleString('es-MX',{minimumFractionDigits:2})}
   Vencidos totales:  $${d.interes_vencidos.toLocaleString('es-MX',{minimumFractionDigits:2})}
-  Moratorio:         $${d.interes_moratorio.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Moratorio (al corte):  $${d.interes_moratorio.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Días de impago: ${d.dias_impago}
 
 FECHAS:
   Entrega: ${d.fecha_entrega} | Próx. vencimiento: ${d.fecha_vto}
-  Interés diario: $${(d.capital_vigente * (d.tasa/100) / 360).toLocaleString('es-MX',{minimumFractionDigits:2})}${proj}`;
+  Interés diario ordinario: $${(d.capital_vigente * (d.tasa/100) / 360).toLocaleString('es-MX',{minimumFractionDigits:2})}${proj}`;
   }
   return sys;
 }

@@ -72,22 +72,26 @@ function adjustToBusinessDay(iso, diaHabil) {
  * Get the start of the current period (last amortization date).
  * If next vencimiento is the 15th of February → start = 15th of January.
  */
-function getPeriodStart(disp, targetISO) {
-  const target = targetISO || disp.fecha_vto;
-  if (!target) return disp.fecha_entrega || todayISO();
+/**
+ * Período inicio = FECHA SIGUIENTE VENCIMIENTO retrocedida 1 mes.
+ * Ej: próxima amortización 15-Feb → período inicia 15-Ene.
+ * Usa siempre fecha_vto (FECHA SIGUIENTE VENCIMIENTO) como base.
+ */
+function getPeriodStart(disp) {
+  const vtoISO = disp.fecha_vto;
+  if (!vtoISO) return disp.fecha_entrega || todayISO();
 
-  const vto = new Date(target + 'T00:00:00');
-  const anivDay = disp.aniv_day;
+  const vto = new Date(vtoISO + 'T00:00:00');
 
-  // Go back exactly one month from the next vencimiento
+  // Retroceder exactamente 1 mes, mismo día
   let pm = vto.getMonth() - 1;
   let py = vto.getFullYear();
   if (pm < 0) { pm = 11; py--; }
-  const lastDay = new Date(py, pm + 1, 0).getDate();
-  const day = Math.min(anivDay, lastDay);
+  const lastDayOfPrevMonth = new Date(py, pm + 1, 0).getDate();
+  const day = Math.min(vto.getDate(), lastDayOfPrevMonth);
   const prev = `${py}-${String(pm+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 
-  // Don't go before fecha_entrega
+  // No retroceder antes de fecha_entrega
   if (disp.fecha_entrega && prev < disp.fecha_entrega) return disp.fecha_entrega;
   return prev;
 }
@@ -118,9 +122,31 @@ function calcInterest(disp, fromISO, toISO) {
   if (!fromISO || !toISO) return null;
   const dias = diffDays(fromISO, toISO);
   if (dias <= 0) return null;
-  const diario  = disp.capital_vigente * (disp.tasa / 100) / 360;
+  const capitalBase = disp.capital_vigente;
+  const diario  = capitalBase * (disp.tasa / 100) / 360;
   const interes = diario * dias;
   return { dias, diario: Math.round(diario*100)/100, interes: Math.round(interes*100)/100 };
+}
+
+/**
+ * Calcula interés moratorio.
+ * Fórmula: 2 × tasa_ordinaria × capital_vencido_impago / 360 × días
+ * El capital sujeto a moratorio = capital_impago + capital_vencido + capital_vencido_no_exig
+ */
+function calcMoratorio(disp, dias) {
+  const capitalMora = (disp.capital_impago || 0) + (disp.capital_vencido || 0) + (disp.capital_vencido_no_exig || 0);
+  if (capitalMora <= 0 || dias <= 0) return null;
+  // tasa_moratoria ya viene como número (2x la ordinaria por default)
+  const tasaMora = disp.tasa_moratoria || (disp.tasa * 2);
+  const diario = capitalMora * (tasaMora / 100) / 360;
+  const interes = diario * dias;
+  return {
+    capitalMora: Math.round(capitalMora * 100) / 100,
+    tasaMora: Math.round(tasaMora * 10000) / 10000,
+    diario: Math.round(diario * 100) / 100,
+    interes: Math.round(interes * 100) / 100,
+    dias
+  };
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
@@ -175,11 +201,12 @@ function renderDashboard() {
   const capVig = d.reduce((s,r) => s + r.capital_vigente, 0);
   const capImp = d.reduce((s,r) => s + r.capital_impago, 0);
   const capVec = d.reduce((s,r) => s + r.capital_vencido, 0);
+  const capVecNoExig = d.reduce((s,r) => s + (r.capital_vencido_no_exig || 0), 0);
   const intOrd = d.reduce((s,r) => s + r.interes_ordinario_vigente, 0);
   const intImp = d.reduce((s,r) => s + r.interes_ordinario_impago, 0);
   const intVec = d.reduce((s,r) => s + r.interes_vencidos, 0);
   const morat  = d.reduce((s,r) => s + r.interes_moratorio, 0);
-  const neto   = capVig + capImp + capVec + intOrd + intImp + intVec + morat;
+  const neto   = capVig + capImp + capVec + capVecNoExig + intOrd + intImp + intVec + morat;
 
   set('kpi-neto',    fmtMXN(neto));
   set('kpi-neto-sub', `${d.length} disposiciones activas`);
@@ -187,8 +214,8 @@ function renderDashboard() {
   set('kpi-cap-vig-sub', `${d.filter(r=>r.status==='VIGENTE').length} disposiciones vigentes`);
   set('kpi-cap-imp', fmtMXN(capImp));
   set('kpi-cap-imp-sub', `${d.filter(r=>r.capital_impago>0).length} disposiciones`);
-  set('kpi-cap-vec', fmtMXN(capVec));
-  set('kpi-cap-vec-sub', `${d.filter(r=>r.capital_vencido>0).length} disposiciones`);
+  set('kpi-cap-vec', fmtMXN(capVec + capVecNoExig));
+  set('kpi-cap-vec-sub', `${d.filter(r=>r.capital_vencido>0 || (r.capital_vencido_no_exig||0)>0).length} disposiciones`);
   set('kpi-int-ord', fmtMXN(intOrd));
   set('kpi-int-imp', fmtMXN(intImp));
   set('kpi-int-vec', fmtMXN(intVec));
@@ -207,19 +234,29 @@ function renderDashboard() {
   set('dash-date', today.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'}));
   set('dash-sub', `${state.lastSync ? 'Última sync: ' + new Date(state.lastSync).toLocaleString('es-MX') : 'Cargando…'}`);
 
-  // Table
-  const vigente = d.filter(r => r.status === 'VIGENTE').sort((a,b) => b.capital_vigente - a.capital_vigente);
+  // Table — ALL dispositions sorted: VENCIDO first, then by capital desc
+  const sorted = [...d].sort((a,b) => {
+    // VENCIDO first
+    if (a.status === 'VENCIDO' && b.status !== 'VENCIDO') return -1;
+    if (a.status !== 'VENCIDO' && b.status === 'VENCIDO') return 1;
+    // Then by total capital desc
+    const aCap = a.capital_vigente + a.capital_impago + a.capital_vencido;
+    const bCap = b.capital_vigente + b.capital_impago + b.capital_vencido;
+    return bCap - aCap;
+  });
   const tbody = document.getElementById('dash-table-body');
-  tbody.innerHTML = vigente.map(r => {
+  tbody.innerHTML = sorted.map(r => {
     const dotClass = r.capital_vencido > 0 ? 'danger' : r.dias_impago > 0 ? 'warn' : 'ok';
+    const capitalShow = r.capital_vigente > 0 ? r.capital_vigente : (r.capital_impago + r.capital_vencido);
+    const statusLabel = r.status === 'VENCIDO' ? `<span style="color:var(--red);font-weight:600">VENCIDO</span>` : (r.status_cobr||r.status);
     return `<tr onclick="selectDisp(${r.folio})">
       <td class="mono">#${r.folio}</td>
       <td>${r.cliente}</td>
       <td style="color:var(--text3);font-size:11.5px">${r.ejecutivo||'—'}</td>
-      <td class="num">${fmtMXN(r.capital_vigente)}</td>
+      <td class="num">${fmtMXN(capitalShow)}</td>
       <td class="num">${fmtPct(r.tasa)}</td>
       <td class="num">${fmtDateShort(r.fecha_vto)}</td>
-      <td><span class="tbl-dot ${dotClass}"></span>${r.status_cobr||r.status}</td>
+      <td><span class="tbl-dot ${dotClass}"></span>${statusLabel}</td>
     </tr>`;
   }).join('');
 }
@@ -338,9 +375,11 @@ function selectDisp(folio) {
     tagEl.innerHTML = `<span class="tag tag-vigente">${d.status_cobr || 'Vigente'}</span>`;
   }
 
-  set('hk-capital', fmtMXN(d.capital_vigente));
+  // Hero KPIs — for VENCIDO, show the relevant capital
+  const capitalPrincipal = d.capital_vigente > 0 ? d.capital_vigente : (d.capital_impago + d.capital_vencido + (d.capital_vencido_no_exig || 0));
+  set('hk-capital', fmtMXN(capitalPrincipal));
   set('hk-tasa',    fmtPct(d.tasa));
-  set('hk-diario',  fmtMXN(d.capital_vigente * (d.tasa/100) / 360));
+  set('hk-diario',  fmtMXN(capitalPrincipal * (d.tasa/100) / 360));
 
   const today = todayISO();
   set('hk-vto', fmtDate(d.fecha_vto));
@@ -354,6 +393,7 @@ function selectDisp(folio) {
   set('s-vigente',   fmtMXN(d.capital_vigente));
   setValCls('s-impago',   d.capital_impago,  fmtMXN(d.capital_impago));
   setValCls('s-vencido',  d.capital_vencido, fmtMXN(d.capital_vencido), 'danger');
+  setValCls('s-vencido-no-exig', (d.capital_vencido_no_exig||0), fmtMXN(d.capital_vencido_no_exig||0), 'danger');
   set('s-int-ord', fmtMXN(d.interes_ordinario_vigente));
   setValCls('s-int-imp', d.interes_ordinario_impago, fmtMXN(d.interes_ordinario_impago));
   setValCls('s-int-vec',  d.interes_vencidos,         fmtMXN(d.interes_vencidos), 'danger');
@@ -363,7 +403,7 @@ function selectDisp(folio) {
   set('ig-entrega',   fmtDate(d.fecha_entrega));
   set('ig-prox-vto',  fmtDate(d.fecha_vto));
   set('ig-vto-cont',  fmtDate(d.fecha_contrato_fin));
-  set('ig-tasa-mor',  d.tasa_moratoria !== '--' ? d.tasa_moratoria + '%' : '—');
+  set('ig-tasa-mor',  typeof d.tasa_moratoria === 'number' ? fmtPct(d.tasa_moratoria) : '—');
   set('ig-aniv',      `Día ${d.aniv_day} de cada mes`);
   set('ig-habil',     d.dia_habil || '—');
   set('ig-tipo',      d.tipo_credito || '—');
@@ -380,7 +420,7 @@ function setupProj(d) {
   const today = todayISO();
 
   // ① Start: last amortization = one month before next vencimiento
-  const periodStart = getPeriodStart(d, d.fecha_vto);
+  const periodStart = getPeriodStart(d);
 
   // ② End: today by default
   document.getElementById('proj-from').value = periodStart;
@@ -417,6 +457,16 @@ function calcProj() {
 
   const { dias, diario, interes } = result;
 
+  // ── Moratorio projection ──
+  const mora = calcMoratorio(d, dias);
+  const moraInteres = mora ? mora.interes : 0;
+  const hasMora = mora && mora.capitalMora > 0;
+
+  // ── HERO — projected interest (most visible) ──
+  set('proj-hero-value', fmtMXN(interes));
+  set('proj-hero-date',  fmtDate(adjustedTo));
+  set('proj-hero-sub',   `${dias} días · ${fmtMXN(diario)}/día`);
+
   // Period bar
   set('pb-period',  `${fmtDate(fromISO)} → ${fmtDate(adjustedTo)}`);
   set('pb-dias',    `${dias} días`);
@@ -426,15 +476,27 @@ function calcProj() {
   set('pb-diario',  fmtMXN(diario) + '/día');
   set('pb-formula', `${fmtMXNK(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 360 × ${dias}`);
 
-  // Results
+  // Secondary results — include moratorio
   set('res-capital',  fmtMXN(d.capital_vigente));
-  set('res-interes',  fmtMXN(interes));
   set('res-int-vec',  fmtMXN(d.interes_vencidos));
   set('res-cap-vec',  fmtMXN(d.capital_vencido));
-  const total = interes + d.interes_vencidos + d.capital_vencido;
+  set('res-moratorio-proj', fmtMXN(moraInteres));
+  set('res-int-imp-proj', fmtMXN(d.interes_ordinario_impago));
+  const total = interes + moraInteres + d.interes_vencidos + d.interes_ordinario_impago + d.capital_vencido + d.capital_impago;
   set('res-total',    fmtMXN(total));
 
-  // Desglose
+  // Show/hide moratorio section
+  const moraSection = document.getElementById('mora-section');
+  if (moraSection) moraSection.style.display = hasMora ? '' : 'none';
+  if (hasMora && mora) {
+    set('mora-capital', fmtMXN(mora.capitalMora));
+    set('mora-tasa',    fmtPct(mora.tasaMora) + ' anual');
+    set('mora-dias',    `${mora.dias} días`);
+    set('mora-result',  fmtMXN(mora.interes));
+    set('mora-formula', `${fmtMXNK(mora.capitalMora)} × ${fmtPct(mora.tasaMora)} ÷ 360 × ${mora.dias}`);
+  }
+
+  // Desglose ordinario
   set('cs-capital', fmtMXN(d.capital_vigente));
   set('cs-tasa',    fmtPct(d.tasa) + ' anual');
   set('cs-dias',    `${dias} días`);
@@ -445,8 +507,8 @@ function setQuick(days) {
   const target = addDays(todayISO(), days);
   document.getElementById('proj-to').value = target;
   if (state.current) {
-    const from = getPeriodStart(state.current, document.getElementById('proj-to').value);
-    document.getElementById('proj-from').value = from;
+    // Keep period start fixed to last amortization; only target date changes
+    document.getElementById('proj-from').value = getPeriodStart(state.current);
   }
   calcProj();
 }
@@ -455,7 +517,7 @@ function setAniv() {
   const anivDate = document.getElementById('qbtn-aniv').dataset.aniv;
   if (!anivDate || !state.current) return;
   document.getElementById('proj-to').value   = anivDate;
-  document.getElementById('proj-from').value = getPeriodStart(state.current, anivDate);
+  document.getElementById('proj-from').value = getPeriodStart(state.current);
   calcProj();
 }
 
