@@ -1,165 +1,144 @@
-/**
- * Cartera Pro — Frontend Application
- * Toda la lógica de cálculo vive aquí, sin dependencias externas.
- */
-
 'use strict';
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 const state = {
-  data:        [],        // array de disposiciones del API
-  filtered:    [],        // después de filtros/búsqueda
-  current:     null,      // disposición seleccionada
-  filterMode:  'all',     // 'all' | 'prev' | 'impago' | 'vencido'
-  lastSync:    null,
-  loading:     false,
+  data:    [],
+  current: null,
+  lastSync: null,
 };
 
-// ── FORMAT HELPERS ────────────────────────────────────────────────────────────
-const fmt2   = n => new Intl.NumberFormat('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
-const fmtMXN = n => '$' + fmt2(n);
-const fmtPct = n => typeof n === 'number' ? n.toFixed(4) + '%' : '—';
-
-function fmtDate(iso) {
+// ── Formatters ────────────────────────────────────────────────────────────────
+const fmtMXN = n => '$' + new Intl.NumberFormat('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+const fmtMXNK = n => n >= 1e6 ? '$' + (n/1e6).toFixed(2) + 'M' : n >= 1e3 ? '$' + (n/1e3).toFixed(0) + 'K' : fmtMXN(n);
+const fmtPct  = n => typeof n === 'number' ? n.toFixed(4) + '%' : '—';
+const fmtDate = iso => {
   if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
-  const months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-  return `${d} ${months[parseInt(m)-1]} ${y}`;
-}
-
-function fmtDateShort(iso) {
+  const [y,m,d] = iso.split('-');
+  const mo = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return `${d} ${mo[+m-1]} ${y}`;
+};
+const fmtDateShort = iso => {
   if (!iso) return '—';
-  const [y, m, d] = iso.split('-');
+  const [y,m,d] = iso.split('-');
   return `${d}/${m}/${y}`;
-}
+};
+const todayISO = () => new Date().toISOString().split('T')[0];
+const diffDays = (a,b) => Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00')) / 86400000);
+const addDays  = (iso,n) => { const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return d.toISOString().split('T')[0]; };
 
-function diffDays(isoA, isoB) {
-  const a = new Date(isoA + 'T00:00:00');
-  const b = new Date(isoB + 'T00:00:00');
-  return Math.round((b - a) / 86_400_000);
-}
+// ── Holiday / Día Hábil logic ─────────────────────────────────────────────────
+// Basic Mexican holidays (fixed dates — extend as needed)
+const MX_HOLIDAYS = new Set([
+  '01-01','02-05','03-21','05-01','09-16','11-02','11-20','12-25'
+]);
 
-function addDays(iso, n) {
+function isMxHoliday(iso) {
   const d = new Date(iso + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return MX_HOLIDAYS.has(`${mm}-${dd}`);
 }
 
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
+function isWeekend(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.getDay() === 0 || d.getDay() === 6; // Sun=0, Sat=6
 }
 
-// ── CALCULATION ENGINE ────────────────────────────────────────────────────────
-
-/**
- * Dado una disposición y una fecha objetivo, calcula el interés.
- *
- * El período inicia en el aniversario anterior a la fecha objetivo
- * (o desde fecha_entrega si es el primer período).
- *
- * Fórmula: Capital × (Tasa/100) / 360 × Días
- */
-function calcInterest(disp, fromISO, toISO) {
-  if (!fromISO || !toISO) return null;
-
-  const dias = diffDays(fromISO, toISO);
-  if (dias <= 0) return null;
-
-  const tasaDecimal = disp.tasa / 100;
-  const interes = disp.capital_vigente * tasaDecimal / 360 * dias;
-  const diario  = disp.capital_vigente * tasaDecimal / 360;
-
-  return {
-    fromISO,
-    toISO,
-    dias,
-    tasaDecimal,
-    diario: Math.round(diario * 100) / 100,
-    interes: Math.round(interes * 100) / 100,
-  };
+function isNonBusinessDay(iso) {
+  return isWeekend(iso) || isMxHoliday(iso);
 }
 
 /**
- * Encuentra el aniversario anterior más cercano a una fecha objetivo.
- * El día aniversario es el día del mes de fecha_entrega.
+ * Adjust a date to a business day based on DIA_HABIL setting.
+ * 'CON DIA HABIL POSTERIOR' → move FORWARD to next business day
+ * 'SIN DIA HABIL POSTERIOR' → keep the date as-is (no adjustment)
  */
-function prevAnivDate(disp, targetISO) {
-  if (!disp.fecha_entrega) return targetISO;
+function adjustToBusinessDay(iso, diaHabil) {
+  if (!iso) return iso;
+  if (!diaHabil || diaHabil === 'SIN DIA HABIL POSTERIOR') return iso;
 
-  const anivDay = disp.aniv_day; // 1–31
-  const target  = new Date(targetISO + 'T00:00:00');
-  const ty = target.getFullYear();
-  const tm = target.getMonth(); // 0-based
-
-  // Try same month
-  function clampedDate(year, month0, day) {
-    const lastDay = new Date(year, month0 + 1, 0).getDate();
-    return new Date(year, month0, Math.min(day, lastDay));
-  }
-
-  let candidate = clampedDate(ty, tm, anivDay);
-  if (candidate >= target) {
-    // Go back one month
-    let pm = tm - 1, py = ty;
-    if (pm < 0) { pm = 11; py--; }
-    candidate = clampedDate(py, pm, anivDay);
-  }
-
-  // Don't go before fecha_entrega
-  const entrega = new Date(disp.fecha_entrega + 'T00:00:00');
-  if (candidate < entrega) candidate = entrega;
-
-  return candidate.toISOString().split('T')[0];
-}
-
-/**
- * Encuentra el próximo aniversario a partir de hoy (o de una fecha dada).
- */
-function nextAnivDate(disp, fromISO) {
-  if (!disp.fecha_vto) return null;
-  // Fecha_vto ya es el próximo aniversario
-  const vto = new Date(disp.fecha_vto + 'T00:00:00');
-  const from = new Date(fromISO + 'T00:00:00');
-  if (vto > from) return disp.fecha_vto;
-
-  // If vto is in the past, project forward month by month
-  const anivDay = disp.aniv_day;
-  let candidate = vto;
+  // CON DIA HABIL POSTERIOR: advance to next business day
+  let d = iso;
   let safety = 0;
-  while (candidate <= from && safety < 36) {
-    const ny = candidate.getMonth() === 11 ? candidate.getFullYear() + 1 : candidate.getFullYear();
-    const nm = candidate.getMonth() === 11 ? 0 : candidate.getMonth() + 1;
-    const lastDay = new Date(ny, nm + 1, 0).getDate();
-    candidate = new Date(ny, nm, Math.min(anivDay, lastDay));
+  while (isNonBusinessDay(d) && safety < 10) {
+    d = addDays(d, 1);
     safety++;
   }
-  return candidate.toISOString().split('T')[0];
+  return d;
+}
+
+// ── Period Calculation ────────────────────────────────────────────────────────
+/**
+ * Get the start of the current period (last amortization date).
+ * If next vencimiento is the 15th of February → start = 15th of January.
+ */
+function getPeriodStart(disp, targetISO) {
+  const target = targetISO || disp.fecha_vto;
+  if (!target) return disp.fecha_entrega || todayISO();
+
+  const vto = new Date(target + 'T00:00:00');
+  const anivDay = disp.aniv_day;
+
+  // Go back exactly one month from the next vencimiento
+  let pm = vto.getMonth() - 1;
+  let py = vto.getFullYear();
+  if (pm < 0) { pm = 11; py--; }
+  const lastDay = new Date(py, pm + 1, 0).getDate();
+  const day = Math.min(anivDay, lastDay);
+  const prev = `${py}-${String(pm+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+
+  // Don't go before fecha_entrega
+  if (disp.fecha_entrega && prev < disp.fecha_entrega) return disp.fecha_entrega;
+  return prev;
+}
+
+/**
+ * Get next aniversario from today (or from a given date).
+ */
+function getNextAniv(disp, fromISO) {
+  if (!disp.fecha_vto) return null;
+  const from = fromISO || todayISO();
+  if (disp.fecha_vto > from) return disp.fecha_vto;
+
+  // Project forward
+  let d = new Date(disp.fecha_vto + 'T00:00:00');
+  for (let i = 0; i < 36; i++) {
+    const nm = d.getMonth() === 11 ? 0 : d.getMonth() + 1;
+    const ny = d.getMonth() === 11 ? d.getFullYear() + 1 : d.getFullYear();
+    const lastDay = new Date(ny, nm + 1, 0).getDate();
+    d = new Date(ny, nm, Math.min(disp.aniv_day, lastDay));
+    const iso = d.toISOString().split('T')[0];
+    if (iso > from) return iso;
+  }
+  return null;
+}
+
+// ── Interest calculation ──────────────────────────────────────────────────────
+function calcInterest(disp, fromISO, toISO) {
+  if (!fromISO || !toISO) return null;
+  const dias = diffDays(fromISO, toISO);
+  if (dias <= 0) return null;
+  const diario  = disp.capital_vigente * (disp.tasa / 100) / 360;
+  const interes = diario * dias;
+  return { dias, diario: Math.round(diario*100)/100, interes: Math.round(interes*100)/100 };
 }
 
 // ── API ───────────────────────────────────────────────────────────────────────
 async function loadCartera() {
-  setSyncState('loading', 'Cargando…');
-  state.loading = true;
-
+  setSyncState('loading', 'Sincronizando…');
   try {
     const res  = await fetch('/api/cartera');
     const json = await res.json();
-
     state.data     = json.data || [];
     state.lastSync = json.last_sync;
-    state.loading  = false;
-
-    const syncTime = json.last_sync
-      ? new Date(json.last_sync).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-      : 'N/D';
-
-    setSyncState('ok', `Sync ${syncTime} · ${state.data.length} disp.`);
-    applyFilters();
-  } catch (err) {
-    state.loading = false;
-    setSyncState('error', 'Error al cargar');
-    document.getElementById('sidebar-list').innerHTML =
-      `<div class="loading-state" style="color:var(--red)">Error al conectar con el servidor.<br><small>${err.message}</small></div>`;
+    const t = json.last_sync
+      ? new Date(json.last_sync).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})
+      : '—';
+    setSyncState('ok', `Sync ${t}`);
+    renderDashboard();
+  } catch (e) {
+    setSyncState('error', 'Error de conexión');
+    console.error(e);
   }
 }
 
@@ -169,241 +148,249 @@ async function triggerSync() {
   setSyncState('loading', 'Sincronizando…');
   try {
     await fetch('/api/sync');
-    // Wait 2s for background task then reload
     setTimeout(() => { loadCartera(); btn.classList.remove('spinning'); }, 2500);
-  } catch {
-    btn.classList.remove('spinning');
-    setSyncState('error', 'Error de sync');
-  }
+  } catch { btn.classList.remove('spinning'); setSyncState('error', 'Error'); }
 }
 
-function setSyncState(state_str, label) {
+function setSyncState(s, label) {
   const dot = document.getElementById('sync-dot');
   const lbl = document.getElementById('sync-label');
-  dot.className = 'sync-dot ' + state_str;
+  dot.className = 'sync-dot ' + s;
   lbl.textContent = label;
 }
 
-// ── FILTERS & LIST ────────────────────────────────────────────────────────────
-function setFilter(el) {
-  document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  state.filterMode = el.dataset.f;
-  applyFilters();
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  localStorage.setItem('logic-theme', isDark ? 'light' : 'dark');
 }
 
-function clearSearch() {
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-clear').style.display = 'none';
-  applyFilters();
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const d = state.data;
+
+  // Totals
+  const capVig = d.reduce((s,r) => s + r.capital_vigente, 0);
+  const capImp = d.reduce((s,r) => s + r.capital_impago, 0);
+  const capVec = d.reduce((s,r) => s + r.capital_vencido, 0);
+  const intOrd = d.reduce((s,r) => s + r.interes_ordinario_vigente, 0);
+  const intImp = d.reduce((s,r) => s + r.interes_ordinario_impago, 0);
+  const intVec = d.reduce((s,r) => s + r.interes_vencidos, 0);
+  const morat  = d.reduce((s,r) => s + r.interes_moratorio, 0);
+  const neto   = capVig + capImp + capVec + intOrd + intImp + intVec + morat;
+
+  set('kpi-neto',    fmtMXN(neto));
+  set('kpi-neto-sub', `${d.length} disposiciones activas`);
+  set('kpi-cap-vig', fmtMXN(capVig));
+  set('kpi-cap-vig-sub', `${d.filter(r=>r.status==='VIGENTE').length} disposiciones vigentes`);
+  set('kpi-cap-imp', fmtMXN(capImp));
+  set('kpi-cap-imp-sub', `${d.filter(r=>r.capital_impago>0).length} disposiciones`);
+  set('kpi-cap-vec', fmtMXN(capVec));
+  set('kpi-cap-vec-sub', `${d.filter(r=>r.capital_vencido>0).length} disposiciones`);
+  set('kpi-int-ord', fmtMXN(intOrd));
+  set('kpi-int-imp', fmtMXN(intImp));
+  set('kpi-int-vec', fmtMXN(intVec));
+  set('kpi-moratorio', fmtMXN(morat));
+
+  // Stats
+  set('stat-total',     d.length);
+  set('stat-vigente',   d.filter(r=>r.status==='VIGENTE').length);
+  set('stat-vencido',   d.filter(r=>r.status==='VENCIDO').length);
+  set('stat-impago',    d.filter(r=>r.dias_impago>0).length);
+  set('stat-clientes',  new Set(d.map(r=>r.cliente)).size);
+  set('stat-ejecutivos',new Set(d.map(r=>r.ejecutivo).filter(Boolean)).size);
+
+  // Date
+  const today = new Date();
+  set('dash-date', today.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'}));
+  set('dash-sub', `${state.lastSync ? 'Última sync: ' + new Date(state.lastSync).toLocaleString('es-MX') : 'Cargando…'}`);
+
+  // Table
+  const vigente = d.filter(r => r.status === 'VIGENTE').sort((a,b) => b.capital_vigente - a.capital_vigente);
+  const tbody = document.getElementById('dash-table-body');
+  tbody.innerHTML = vigente.map(r => {
+    const dotClass = r.capital_vencido > 0 ? 'danger' : r.dias_impago > 0 ? 'warn' : 'ok';
+    return `<tr onclick="selectDisp(${r.folio})">
+      <td class="mono">#${r.folio}</td>
+      <td>${r.cliente}</td>
+      <td style="color:var(--text3);font-size:11.5px">${r.ejecutivo||'—'}</td>
+      <td class="num">${fmtMXN(r.capital_vigente)}</td>
+      <td class="num">${fmtPct(r.tasa)}</td>
+      <td class="num">${fmtDateShort(r.fecha_vto)}</td>
+      <td><span class="tbl-dot ${dotClass}"></span>${r.status_cobr||r.status}</td>
+    </tr>`;
+  }).join('');
 }
 
-function applyFilters() {
-  const q    = document.getElementById('search-input').value.trim().toLowerCase();
-  const sort = document.getElementById('sort-select').value;
-
-  document.getElementById('search-clear').style.display = q ? '' : 'none';
-
-  let items = state.data.filter(d => {
-    // Status filter
-    if (state.filterMode === 'prev'    && !d.status_cobr.toLowerCase().includes('preventiv')) return false;
-    if (state.filterMode === 'impago'  && d.dias_impago === 0) return false;
-    if (state.filterMode === 'vencido' && d.capital_vencido_exigible === 0) return false;
-
-    // Search
-    if (q) {
-      const hay = `${d.cliente} ${d.folio} ${d.contrato} ${d.ejecutivo}`.toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
-
-  // Sort
-  switch (sort) {
-    case 'cliente':    items.sort((a,b) => a.cliente.localeCompare(b.cliente)); break;
-    case 'capital_desc': items.sort((a,b) => b.capital_vigente - a.capital_vigente); break;
-    case 'vto_asc':    items.sort((a,b) => (a.fecha_vto||'9999') < (b.fecha_vto||'9999') ? -1 : 1); break;
-    case 'folio_asc':  items.sort((a,b) => a.folio - b.folio); break;
-  }
-
-  state.filtered = items;
-  renderList();
-  updateFooter();
+function showDashboard() {
+  state.current = null;
+  document.getElementById('view-dashboard').style.display = '';
+  document.getElementById('view-detail').style.display = 'none';
+  updateChatContext();
 }
 
-function updateFooter() {
-  const totalCap = state.filtered.reduce((s, d) => s + d.capital_vigente, 0);
-  document.getElementById('footer-count').textContent   = `${state.filtered.length} disposiciones`;
-  document.getElementById('footer-capital').textContent = fmtMXN(totalCap / 1e6) + 'M capital';
-}
+// ── Search ────────────────────────────────────────────────────────────────────
+function onSearch() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  const dd = document.getElementById('search-dropdown');
+  const cl = document.getElementById('search-clear');
+  cl.style.display = q ? '' : 'none';
 
-function renderList() {
-  const container = document.getElementById('sidebar-list');
+  if (!q || q.length < 1) { dd.classList.remove('open'); return; }
 
-  if (state.loading) {
-    container.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Cargando…</span></div>';
-    return;
-  }
-  if (state.filtered.length === 0) {
-    container.innerHTML = '<div class="loading-state" style="color:var(--text3)">Sin resultados</div>';
+  const results = state.data.filter(r =>
+    String(r.folio).includes(q) ||
+    r.cliente.toLowerCase().includes(q) ||
+    r.contrato.toLowerCase().includes(q)
+  ).slice(0, 30);
+
+  if (!results.length) {
+    dd.innerHTML = `<div class="sd-empty">Sin resultados para "${q}"</div>`;
+    dd.classList.add('open');
     return;
   }
 
   // Group by client
   const groups = {};
-  state.filtered.forEach(d => {
-    if (!groups[d.cliente]) groups[d.cliente] = [];
-    groups[d.cliente].push(d);
+  results.forEach(r => {
+    if (!groups[r.cliente]) groups[r.cliente] = [];
+    groups[r.cliente].push(r);
   });
 
   let html = '';
-  Object.keys(groups).sort().forEach(client => {
-    const items = groups[client];
-    html += `<div class="list-group">
-      <div class="list-group-label">${client}</div>`;
-    items.forEach(d => {
-      const dotClass = d.capital_vencido_exigible > 0 ? 'danger'
-                     : d.dias_impago > 0 ? 'warn' : 'ok';
-      const active   = state.current && state.current.folio === d.folio ? ' active' : '';
-      const capShort = d.capital_vigente >= 1e6
-        ? fmtMXN(d.capital_vigente / 1e6) + 'M'
-        : fmtMXN(d.capital_vigente / 1e3) + 'K';
-      const vtoShort = d.fecha_vto ? fmtDateShort(d.fecha_vto) : '—';
-
-      html += `<div class="list-item${active}" onclick="selectDisp(${d.folio})" data-folio="${d.folio}">
-        <div class="li-status ${dotClass}"></div>
-        <div class="li-content">
-          <div class="li-folio">#${d.folio}</div>
-          <div class="li-sub">${fmtPct(d.tasa)} · Vto: ${vtoShort}</div>
+  Object.entries(groups).forEach(([client, items]) => {
+    if (Object.keys(groups).length > 1) html += `<div class="sd-group-label">${client}</div>`;
+    items.forEach(r => {
+      const dot = r.capital_vencido > 0 ? 'danger' : r.dias_impago > 0 ? 'warn' : 'ok';
+      html += `<div class="sd-item" onclick="selectDisp(${r.folio}); closeSearch()">
+        <div class="sd-dot ${dot}"></div>
+        <div class="sd-main">
+          <div class="sd-folio">#${r.folio}</div>
+          <div class="sd-name">${r.cliente}</div>
         </div>
-        <div class="li-right">
-          <div class="li-cap">${capShort}</div>
+        <div class="sd-right">
+          <div class="sd-cap">${fmtMXNK(r.capital_vigente)}</div>
+          <div class="sd-tasa">${fmtPct(r.tasa)}</div>
         </div>
       </div>`;
     });
-    html += `</div>`;
   });
 
-  container.innerHTML = html;
+  dd.innerHTML = html;
+  dd.classList.add('open');
+}
 
-  // Scroll active into view
-  if (state.current) {
-    const el = container.querySelector(`[data-folio="${state.current.folio}"]`);
-    if (el) el.scrollIntoView({ block: 'nearest' });
+function onSearchKey(e) {
+  if (e.key === 'Escape') closeSearch();
+  if (e.key === 'Enter') {
+    const first = document.querySelector('.sd-item');
+    if (first) first.click();
   }
 }
 
-// ── DETAIL VIEW ───────────────────────────────────────────────────────────────
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  closeSearch();
+}
+
+function closeSearch() {
+  document.getElementById('search-dropdown').classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.topbar-search-wrap')) closeSearch();
+});
+
+// ── Detail view ───────────────────────────────────────────────────────────────
 function selectDisp(folio) {
-  const disp = state.data.find(d => d.folio === folio);
-  if (!disp) return;
+  const d = state.data.find(r => r.folio === folio);
+  if (!d) return;
+  state.current = d;
+  closeSearch();
 
-  state.current = disp;
-
-  // Update list active state
-  document.querySelectorAll('.list-item').forEach(li => {
-    li.classList.toggle('active', parseInt(li.dataset.folio) === folio);
-  });
-
-  document.getElementById('empty-state').style.display = 'none';
-  const detail = document.getElementById('detail');
-  detail.style.display = 'block';
+  document.getElementById('view-dashboard').style.display = 'none';
+  const detail = document.getElementById('view-detail');
+  detail.style.display = '';
   detail.classList.remove('fade-in');
-  void detail.offsetWidth; // reflow
+  void detail.offsetWidth;
   detail.classList.add('fade-in');
 
-  populateHero(disp);
-  populateSaldos(disp);
-  populateInfo(disp);
-  setupProjection(disp);
+  // Nav
+  set('detail-nav-folio', `#${d.folio} · ${d.cliente}`);
 
-  // Breadcrumb
-  document.getElementById('breadcrumb').innerHTML = `
-    <span class="bc-root" style="cursor:pointer;color:var(--text3)" onclick="goHome()">Disposiciones</span>
-    <span class="bc-sep"> / </span>
-    <span class="bc-current">#${disp.folio} · ${disp.cliente}</span>`;
-
-  // Topbar tag
-  const tags = document.getElementById('topbar-tags');
-  if (disp.capital_vencido_exigible > 0) {
-    tags.innerHTML = `<span class="tag-pill tag-vencido">Vencida</span>`;
-  } else if (disp.dias_impago > 0) {
-    tags.innerHTML = `<span class="tag-pill tag-preventivo">Impago · ${disp.dias_impago}d</span>`;
-  } else {
-    tags.innerHTML = `<span class="tag-pill tag-vigente">${disp.status_cobr || 'Vigente'}</span>`;
-  }
-}
-
-function goHome() {
-  state.current = null;
-  document.getElementById('empty-state').style.display = '';
-  document.getElementById('detail').style.display = 'none';
-  document.getElementById('breadcrumb').innerHTML = `<span class="bc-root">Disposiciones</span>`;
-  document.getElementById('topbar-tags').innerHTML = '';
-  document.querySelectorAll('.list-item').forEach(li => li.classList.remove('active'));
-}
-
-function populateHero(d) {
+  // Hero
   set('h-folio',    `Disposición #${d.folio}`);
   set('h-cliente',  d.cliente);
   set('h-contrato', d.contrato || '—');
   set('h-ejecutivo',d.ejecutivo || '—');
   set('h-sucursal', d.sucursal || '—');
   set('h-producto', d.producto || '—');
+
+  const tagEl = document.getElementById('h-status-tag');
+  if (d.capital_vencido > 0) {
+    tagEl.innerHTML = `<span class="tag tag-vencido">Cartera Vencida</span>`;
+  } else if (d.dias_impago > 0) {
+    tagEl.innerHTML = `<span class="tag tag-preventivo">Impago · ${d.dias_impago}d</span>`;
+  } else {
+    tagEl.innerHTML = `<span class="tag tag-vigente">${d.status_cobr || 'Vigente'}</span>`;
+  }
+
   set('hk-capital', fmtMXN(d.capital_vigente));
   set('hk-tasa',    fmtPct(d.tasa));
-  set('hk-diario',  fmtMXN(d.capital_vigente * (d.tasa / 100) / 360));
-  set('hk-vto',     fmtDate(d.fecha_vto));
+  set('hk-diario',  fmtMXN(d.capital_vigente * (d.tasa/100) / 360));
 
   const today = todayISO();
+  set('hk-vto', fmtDate(d.fecha_vto));
   if (d.fecha_vto) {
     const diff = diffDays(today, d.fecha_vto);
-    const sub  = diff >= 0 ? `en ${diff} días` : `hace ${-diff} días`;
-    set('hk-vto-sub', sub);
+    set('hk-vto-sub', diff >= 0 ? `en ${diff} días` : `hace ${-diff} días`);
   }
-}
 
-function populateSaldos(d) {
-  set('is-dispuesto', fmtMXN(d.capital_dispuesto));
-  set('is-vigente',   fmtMXN(d.capital_vigente));
-  setValClass('is-impago',   d.capital_impago,           fmtMXN(d.capital_impago));
-  setValClass('is-venc-ex',  d.capital_vencido_exigible, fmtMXN(d.capital_vencido_exigible), 'danger');
-  set('is-int-vig',   fmtMXN(d.interes_ordinario_vigente));
-  setValClass('is-int-imp',  d.interes_ordinario_impago, fmtMXN(d.interes_ordinario_impago));
-  setValClass('is-moratorio',d.interes_moratorio,        fmtMXN(d.interes_moratorio));
-  const diEl = document.getElementById('is-dias-imp');
-  diEl.textContent = d.dias_impago + ' días';
-  diEl.className   = 'is-val mono' + (d.dias_impago > 0 ? ' warn' : ' zero');
-}
+  // Saldos
+  set('s-dispuesto', fmtMXN(d.capital_dispuesto));
+  set('s-vigente',   fmtMXN(d.capital_vigente));
+  setValCls('s-impago',   d.capital_impago,  fmtMXN(d.capital_impago));
+  setValCls('s-vencido',  d.capital_vencido, fmtMXN(d.capital_vencido), 'danger');
+  set('s-int-ord', fmtMXN(d.interes_ordinario_vigente));
+  setValCls('s-int-imp', d.interes_ordinario_impago, fmtMXN(d.interes_ordinario_impago));
+  setValCls('s-int-vec',  d.interes_vencidos,         fmtMXN(d.interes_vencidos), 'danger');
+  setValCls('s-moratorio',d.interes_moratorio,         fmtMXN(d.interes_moratorio), 'danger');
 
-function populateInfo(d) {
+  // Info
   set('ig-entrega',   fmtDate(d.fecha_entrega));
   set('ig-prox-vto',  fmtDate(d.fecha_vto));
   set('ig-vto-cont',  fmtDate(d.fecha_contrato_fin));
   set('ig-tasa-mor',  d.tasa_moratoria !== '--' ? d.tasa_moratoria + '%' : '—');
   set('ig-aniv',      `Día ${d.aniv_day} de cada mes`);
+  set('ig-habil',     d.dia_habil || '—');
   set('ig-tipo',      d.tipo_credito || '—');
   set('ig-status',    d.status_cobr || '—');
-  set('ig-linea',     d.folio_linea ? `#${d.folio_linea}` : '—');
+
+  // Setup projection
+  setupProj(d);
+  updateChatContext();
+  window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-// ── PROJECTION ────────────────────────────────────────────────────────────────
-function setupProjection(d) {
+// ── Projection ────────────────────────────────────────────────────────────────
+function setupProj(d) {
   const today = todayISO();
 
-  // Default: from = prev aniversario before today, to = today
-  const defFrom = prevAnivDate(d, today);
-  const defTo   = today;
+  // ① Start: last amortization = one month before next vencimiento
+  const periodStart = getPeriodStart(d, d.fecha_vto);
 
-  document.getElementById('proj-from').value = defFrom;
-  document.getElementById('proj-to').value   = defTo;
+  // ② End: today by default
+  document.getElementById('proj-from').value = periodStart;
+  document.getElementById('proj-to').value   = today;
 
-  // Set hint text
-  set('hint-from', `Aniversario: día ${d.aniv_day}`);
+  set('hint-from', `Última amortización: ${fmtDateShort(periodStart)}`);
   set('hint-to',   'Fecha a proyectar');
 
-  // Set aniversario quick button label
-  const nextAniv = nextAnivDate(d, today);
+  // Aniversario button
+  const nextAniv = getNextAniv(d, today);
   const anivBtn  = document.getElementById('qbtn-aniv');
   if (nextAniv) {
     anivBtn.textContent = `Aniv. ${fmtDateShort(nextAniv)}`;
@@ -419,87 +406,91 @@ function calcProj() {
 
   const fromISO = document.getElementById('proj-from').value;
   const toISO   = document.getElementById('proj-to').value;
-
   if (!fromISO || !toISO) return;
 
-  const result = calcInterest(d, fromISO, toISO);
+  // Apply día hábil adjustment to the target date
+  const adjustedTo = adjustToBusinessDay(toISO, d.dia_habil);
+  const wasAdjusted = adjustedTo !== toISO;
 
-  if (!result || result.dias <= 0) {
-    set('rs-interes',    '—');
-    set('rs-capital-pago','—');
-    set('rs-total',      '—');
-    set('pb-dias',       '0 días');
-    set('pb-period',     '—');
-    return;
-  }
+  const result = calcInterest(d, fromISO, adjustedTo);
+  if (!result || result.dias <= 0) return;
 
   const { dias, diario, interes } = result;
-  const capitalPago = 0; // No tenemos capital programado en tiempo real
-  const total       = interes + capitalPago;
 
   // Period bar
-  set('pb-period',  `${fmtDate(fromISO)} → ${fmtDate(toISO)}`);
+  set('pb-period',  `${fmtDate(fromISO)} → ${fmtDate(adjustedTo)}`);
   set('pb-dias',    `${dias} días`);
-  set('pb-diario',  fmtMXN(diario) + ' / día');
-  set('pb-formula', `${fmtMXN(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 360 × ${dias}`);
+  set('pb-habil',   wasAdjusted
+    ? `Ajustado al ${fmtDateShort(adjustedTo)} (día hábil)`
+    : d.dia_habil === 'CON DIA HABIL POSTERIOR' ? 'Día hábil ✓' : 'Sin ajuste');
+  set('pb-diario',  fmtMXN(diario) + '/día');
+  set('pb-formula', `${fmtMXNK(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 360 × ${dias}`);
 
-  // Result strip
-  set('rs-interes',     fmtMXN(interes));
-  set('rs-capital-pago',capitalPago > 0 ? fmtMXN(capitalPago) : '$0.00');
-  set('rs-cap-sub',     capitalPago > 0 ? 'capital programado' : 'sin capital programado');
-  set('rs-total',       fmtMXN(total));
+  // Results
+  set('res-capital',  fmtMXN(d.capital_vigente));
+  set('res-interes',  fmtMXN(interes));
+  set('res-int-vec',  fmtMXN(d.interes_vencidos));
+  set('res-cap-vec',  fmtMXN(d.capital_vencido));
+  const total = interes + d.interes_vencidos + d.capital_vencido;
+  set('res-total',    fmtMXN(total));
 
-  // Calc steps
+  // Desglose
   set('cs-capital', fmtMXN(d.capital_vigente));
   set('cs-tasa',    fmtPct(d.tasa) + ' anual');
   set('cs-dias',    `${dias} días`);
   set('cs-result',  fmtMXN(interes));
 }
 
-// Quick buttons
 function setQuick(days) {
-  const today = todayISO();
-  const target = addDays(today, days);
+  const target = addDays(todayISO(), days);
   document.getElementById('proj-to').value = target;
-
-  // Adjust from to prev aniversario before target
   if (state.current) {
-    const from = prevAnivDate(state.current, target);
+    const from = getPeriodStart(state.current, document.getElementById('proj-to').value);
     document.getElementById('proj-from').value = from;
   }
   calcProj();
 }
 
 function setAniv() {
-  const btn = document.getElementById('qbtn-aniv');
-  const anivDate = btn.dataset.aniv;
+  const anivDate = document.getElementById('qbtn-aniv').dataset.aniv;
   if (!anivDate || !state.current) return;
-
   document.getElementById('proj-to').value   = anivDate;
-  const from = prevAnivDate(state.current, anivDate);
-  document.getElementById('proj-from').value = from;
+  document.getElementById('proj-from').value = getPeriodStart(state.current, anivDate);
   calcProj();
 }
 
-// ── UTILS ─────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function set(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
 }
 
-function setValClass(id, numVal, fmtVal, dangerClass = 'warn') {
+function setValCls(id, num, fmt, dangerClass = 'warn') {
   const el = document.getElementById(id);
   if (!el) return;
-  el.textContent = fmtVal;
-  el.className   = 'is-val mono' + (numVal > 0 ? ` ${dangerClass}` : ' zero');
+  el.textContent = fmt;
+  el.className = 'sv mono' + (num > 0 ? ` ${dangerClass}` : ' zero');
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
+function updateChatContext() {
+  const ctx   = document.getElementById('chat-ctx');
+  const label = document.getElementById('chat-ctx-label');
+  const sub   = document.getElementById('chat-subtitle');
+  if (state.current) {
+    if (ctx) ctx.style.display = '';
+    if (label) label.textContent = `#${state.current.folio} · ${state.current.cliente}`;
+    if (sub)   sub.textContent   = `Contexto · #${state.current.folio}`;
+  } else {
+    if (ctx) ctx.style.display = 'none';
+    if (sub) sub.textContent   = 'Potenciado por Claude';
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 function init() {
-  // Today label in topbar
-  const today = new Date();
-  document.getElementById('today-label').textContent =
-    today.toLocaleDateString('es-MX', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+  // Restore theme
+  const saved = localStorage.getItem('logic-theme');
+  if (saved) document.documentElement.setAttribute('data-theme', saved);
 
   loadCartera();
 }

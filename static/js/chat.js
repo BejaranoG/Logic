@@ -1,252 +1,154 @@
-/**
- * LOGIC · Asistente IA
- * Chatbot potenciado por Claude con contexto de la disposición activa.
- * Llama al backend /api/chat que hace proxy a la API de Anthropic.
- */
-
 'use strict';
 
-// ── State ─────────────────────────────────────────────────────────────────────
-const chatState = {
-  open: false,
-  messages: [],      // { role: 'user'|'assistant', content: string }
-  streaming: false,
-};
+const chatState = { open: false, messages: [], streaming: false };
 
-// ── Toggle ────────────────────────────────────────────────────────────────────
 function toggleChat() {
   chatState.open = !chatState.open;
   const panel = document.getElementById('chat-panel');
-  const fab   = document.getElementById('chat-fab');
-  const openIcon  = fab.querySelector('.chat-fab-icon');
-  const closeIcon = fab.querySelector('.chat-close-icon');
-
+  const iconChat  = document.querySelector('.icon-chat');
+  const iconClose = document.querySelector('.icon-close');
+  panel.classList.toggle('open', chatState.open);
+  if (iconChat)  iconChat.style.display  = chatState.open ? 'none' : '';
+  if (iconClose) iconClose.style.display = chatState.open ? '' : 'none';
   if (chatState.open) {
-    panel.classList.add('open');
-    openIcon.style.display  = 'none';
-    closeIcon.style.display = '';
     document.getElementById('chat-input').focus();
-    updateContextBar();
-  } else {
-    panel.classList.remove('open');
-    openIcon.style.display  = '';
-    closeIcon.style.display = 'none';
+    updateChatCtx();
   }
 }
 
 function clearChat() {
   chatState.messages = [];
-  const msgs = document.getElementById('chat-messages');
+  const msgs = document.getElementById('chat-msgs');
   msgs.innerHTML = `
-    <div class="chat-welcome">
-      <div class="chat-welcome-logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-        </svg>
-      </div>
-      <p class="chat-welcome-title">Nueva conversación</p>
-      <p class="chat-welcome-sub">¿En qué puedo ayudarte?</p>
-      <div class="chat-suggestions">
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo se calcula el interés ordinario?</button>
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué significa capital vencido exigible?</button>
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">Explícame el saldo de esta disposición</button>
+    <div class="chat-welcome" id="chat-welcome">
+      <div class="cw-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div>
+      <p class="cw-title">Nueva conversación</p>
+      <p class="cw-sub">¿En qué puedo ayudarte?</p>
+      <div class="chat-suggs">
+        <button class="chat-sugg" onclick="sendSugg(this)">¿Cómo se calcula el interés ordinario?</button>
+        <button class="chat-sugg" onclick="sendSugg(this)">¿Qué significa capital vencido exigible?</button>
+        <button class="chat-sugg" onclick="sendSugg(this)">Explícame el saldo de esta disposición</button>
       </div>
     </div>`;
 }
 
-function updateContextBar() {
-  const bar   = document.getElementById('chat-context-bar');
-  const label = document.getElementById('chat-context-label');
-  const sub   = document.getElementById('chat-subtitle');
-
-  if (state.current) {
-    bar.style.display = '';
-    label.textContent = `#${state.current.folio} · ${state.current.cliente}`;
-    sub.textContent   = `Contexto cargado · Disposición #${state.current.folio}`;
-  } else {
-    bar.style.display = 'none';
-    sub.textContent   = 'Potenciado por Claude · IA';
-  }
+function updateChatCtx() {
+  // delegates to app.js updateChatContext if available
+  if (typeof updateChatContext === 'function') updateChatContext();
 }
 
-// ── Build system prompt ───────────────────────────────────────────────────────
-function buildSystemPrompt() {
-  const today = new Date().toLocaleDateString('es-MX', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  });
-
-  let ctx = `Eres el asistente financiero de LOGIC, una plataforma de proyección de saldos para una financiera que otorga créditos PYME-AGRO en México.
+function buildSystem() {
+  const today = new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  let sys = `Eres el asistente financiero de LOGIC, plataforma de proyección de saldos para créditos PYME-AGRO en México.
 
 Fecha actual: ${today}
 
 FÓRMULA DE INTERÉS ORDINARIO (base 360 días):
   Interés = Capital Vigente × (Tasa Base Ordinaria / 100) / 360 × Días del Período
 
-REGLAS DEL SISTEMA:
-- La tasa base ordinaria es anual, expresada en porcentaje (ej: 23.7288 = 23.7288%)
-- Los días del período se calculan entre el aniversario anterior y la fecha objetivo
-- El día aniversario es el día del mes de la fecha de entrega del crédito
+REGLAS:
+- Tasa es anual en porcentaje (ej: 23.7288 = 23.7288%)
 - Base de cálculo: 360 días (año comercial)
-- Corte de interés: ANIVERSARIO (mismo día de cada mes)
+- Corte de interés: ANIVERSARIO (mismo día del mes que la fecha de entrega)
+- Inicio del período: última amortización = un mes antes del próximo vencimiento
+- Día hábil posterior: si la fecha cae en inhábil/fin de semana, se mueve al siguiente día hábil
 
 GLOSARIO:
-- Capital Vigente: saldo insoluto activo sobre el que se calcula el interés
-- Capital Impago: capital que no fue pagado en la fecha de vencimiento pero aún no es exigible
-- Capital Vencido Exigible: capital ya exigible y no pagado (cartera vencida)
-- Interés Ordinario Vigente: interés devengado del período actual
-- Interés Ordinario Impago: interés de períodos anteriores no pagado
-- Interés Moratorio: penalización por impago, calculada sobre la tasa moratoria
-- Días de Impago: días transcurridos desde el último pago
-- Status Cobranza: etapa de gestión (Preventivo = al día pero próximo a vencer, Impago = ya venció)
+- Capital Vigente: saldo activo sobre el que se calcula el interés
+- Capital Impago: capital que venció pero aún no es exigible
+- Capital Vencido Exigible: ya exigible y no pagado (cartera vencida)
+- Intereses Vencidos: ordinario + refinanciado vencido (exigible y no exigible)
+- Interés Moratorio: penalización por impago sobre tasa moratoria
+- Días de Impago: días desde el último pago
 
-COMPORTAMIENTO:
-- Responde en español, de forma concisa y profesional
-- Si el usuario pregunta por números de una disposición específica, usa los datos del contexto
-- Cuando hagas cálculos, muestra la fórmula y el resultado
-- Si el usuario pregunta algo que no es de tu dominio financiero, redirige amablemente
-- No inventes datos que no estén en el contexto`;
+Responde en español, de forma concisa y profesional. Muestra fórmulas cuando hagas cálculos.`;
 
-  // Inject active disposition context
-  if (state.current) {
+  if (typeof state !== 'undefined' && state.current) {
     const d = state.current;
-    const projFrom = document.getElementById('proj-from')?.value;
-    const projTo   = document.getElementById('proj-to')?.value;
-
-    let projInfo = '';
-    if (projFrom && projTo) {
-      const dias     = Math.round((new Date(projTo) - new Date(projFrom)) / 86400000);
-      const interes  = d.capital_vigente * (d.tasa / 100) / 360 * dias;
-      projInfo = `
-PROYECCIÓN ACTIVA EN PANTALLA:
-  - Fecha inicio período: ${projFrom}
-  - Fecha proyección: ${projTo}
-  - Días calculados: ${dias}
-  - Interés proyectado: $${interes.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN`;
+    const from = document.getElementById('proj-from')?.value;
+    const to   = document.getElementById('proj-to')?.value;
+    let proj = '';
+    if (from && to) {
+      const dias    = Math.round((new Date(to) - new Date(from)) / 86400000);
+      const interes = d.capital_vigente * (d.tasa/100) / 360 * dias;
+      proj = `\nPROYECCIÓN EN PANTALLA: Período ${from} → ${to} = ${dias} días → Interés $${interes.toLocaleString('es-MX',{minimumFractionDigits:2})} MXN`;
     }
+    sys += `
 
-    ctx += `
+═══════════════ DISPOSICIÓN ACTIVA ═══════════════
+Folio: #${d.folio} | Cliente: ${d.cliente}
+Contrato: ${d.contrato} | Ejecutivo: ${d.ejecutivo}
+Tasa ordinaria: ${d.tasa}% | Tasa moratoria: ${d.tasa_moratoria}
+Día aniversario: ${d.aniv_day} | Día hábil: ${d.dia_habil}
 
-═══════════════════════════════
-DISPOSICIÓN ACTIVA EN PANTALLA
-═══════════════════════════════
-Folio: #${d.folio}
-Cliente: ${d.cliente}
-Contrato: ${d.contrato || '—'}
-Ejecutivo: ${d.ejecutivo || '—'}
-Sucursal: ${d.sucursal || '—'}
-Producto: ${d.producto || '—'}
-Tipo de Crédito: ${d.tipo_credito || '—'}
+CAPITAL:
+  Vigente:  $${d.capital_vigente.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Impago:   $${d.capital_impago.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Vencido:  $${d.capital_vencido.toLocaleString('es-MX',{minimumFractionDigits:2})}
 
-TASAS:
-  - Tasa Base Ordinaria: ${d.tasa}% anual
-  - Tasa Moratoria: ${d.tasa_moratoria !== '--' ? d.tasa_moratoria + '%' : 'N/A'}
-  - Interés diario (base 360): $${(d.capital_vigente * (d.tasa/100) / 360).toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-
-SALDOS DE CAPITAL:
-  - Capital dispuesto original: $${d.capital_dispuesto.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-  - Capital vigente (activo): $${d.capital_vigente.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-  - Capital impago: $${d.capital_impago.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-  - Capital vencido exigible: $${d.capital_vencido_exigible.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-
-SALDOS DE INTERÉS:
-  - Interés ordinario vigente: $${d.interes_ordinario_vigente.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-  - Interés ordinario impago: $${d.interes_ordinario_impago.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
-  - Interés moratorio: $${d.interes_moratorio.toLocaleString('es-MX', {minimumFractionDigits:2})} MXN
+INTERÉS:
+  Ordinario vigente: $${d.interes_ordinario_vigente.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Ordinario impago:  $${d.interes_ordinario_impago.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Vencidos totales:  $${d.interes_vencidos.toLocaleString('es-MX',{minimumFractionDigits:2})}
+  Moratorio:         $${d.interes_moratorio.toLocaleString('es-MX',{minimumFractionDigits:2})}
 
 FECHAS:
-  - Fecha de entrega: ${d.fecha_entrega || '—'}
-  - Día aniversario: día ${d.aniv_day} de cada mes
-  - Próximo vencimiento: ${d.fecha_vto || '—'}
-  - Vencimiento del contrato: ${d.fecha_contrato_fin || '—'}
-
-COBRANZA:
-  - Status: ${d.status_cobr || '—'}
-  - Días de impago: ${d.dias_impago}
-${projInfo}`;
-  } else {
-    ctx += `
-
-NOTA: El usuario no tiene ninguna disposición seleccionada actualmente. Puedes responder preguntas generales sobre cálculos financieros y cartera.`;
+  Entrega: ${d.fecha_entrega} | Próx. vencimiento: ${d.fecha_vto}
+  Interés diario: $${(d.capital_vigente * (d.tasa/100) / 360).toLocaleString('es-MX',{minimumFractionDigits:2})}${proj}`;
   }
-
-  return ctx;
+  return sys;
 }
 
-// ── Send message ──────────────────────────────────────────────────────────────
 async function sendMessage() {
   const input = document.getElementById('chat-input');
   const text  = input.value.trim();
   if (!text || chatState.streaming) return;
 
-  // Clear welcome screen on first message
-  const welcome = document.querySelector('.chat-welcome');
+  const welcome = document.getElementById('chat-welcome');
   if (welcome) welcome.remove();
 
-  // Add user message to UI
-  appendMessage('user', text);
+  appendMsg('user', text);
   chatState.messages.push({ role: 'user', content: text });
   input.value = '';
   input.style.height = '';
 
-  // Disable send
   chatState.streaming = true;
   document.getElementById('chat-send').disabled = true;
 
-  // Show typing indicator
   const typingId = showTyping();
-
   try {
-    const response = await fetch('/api/chat', {
+    const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: chatState.messages,
-        system: buildSystemPrompt(),
-      }),
+      body: JSON.stringify({ messages: chatState.messages, system: buildSystem() }),
     });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    // Stream the response
     removeTyping(typingId);
-    const msgEl = appendMessage('assistant', '');
-    const bubbleEl = msgEl.querySelector('.chat-bubble');
-
-    const reader  = response.body.getReader();
+    const msgEl   = appendMsg('assistant', '');
+    const bubble  = msgEl.querySelector('.chat-bubble');
+    const reader  = resp.body.getReader();
     const decoder = new TextDecoder();
-    let fullText  = '';
+    let full = '';
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(data);
-            const delta  = parsed.delta?.text || '';
-            if (delta) {
-              fullText += delta;
-              bubbleEl.innerHTML = renderMarkdown(fullText);
-              scrollChatToBottom();
-            }
-          } catch { /* skip malformed chunks */ }
-        }
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const delta = JSON.parse(data)?.delta?.text || '';
+          if (delta) { full += delta; bubble.innerHTML = mdToHtml(full); scrollChat(); }
+        } catch {}
       }
     }
-
-    chatState.messages.push({ role: 'assistant', content: fullText });
-
-  } catch (err) {
+    chatState.messages.push({ role: 'assistant', content: full });
+  } catch(e) {
     removeTyping(typingId);
-    appendMessage('assistant', `Lo siento, ocurrió un error al conectar con el asistente. Por favor intenta de nuevo.\n\n_Error: ${err.message}_`);
+    appendMsg('assistant', `Error al conectar con el asistente: ${e.message}`);
   } finally {
     chatState.streaming = false;
     document.getElementById('chat-send').disabled = false;
@@ -254,110 +156,59 @@ async function sendMessage() {
   }
 }
 
-function sendSuggestion(el) {
-  const input = document.getElementById('chat-input');
-  input.value = el.textContent;
+function sendSugg(el) {
+  document.getElementById('chat-input').value = el.textContent;
   sendMessage();
 }
 
-function handleChatKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+function chatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 }
 
-function autoResize(el) {
+function chatResize(el) {
   el.style.height = '';
-  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+  el.style.height = Math.min(el.scrollHeight, 90) + 'px';
 }
 
-// ── UI helpers ────────────────────────────────────────────────────────────────
-function appendMessage(role, content) {
-  const container = document.getElementById('chat-messages');
-  const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-
+function appendMsg(role, content) {
+  const c   = document.getElementById('chat-msgs');
+  const now = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
-  div.innerHTML = `
-    <div class="chat-bubble">${role === 'assistant' ? renderMarkdown(content) : escapeHtml(content)}</div>
-    <div class="chat-msg-time">${now}</div>`;
-
-  container.appendChild(div);
-  scrollChatToBottom();
+  div.innerHTML = `<div class="chat-bubble">${role==='assistant' ? mdToHtml(content) : esc(content)}</div><div class="chat-msg-time">${now}</div>`;
+  c.appendChild(div);
+  scrollChat();
   return div;
 }
 
 function showTyping() {
-  const id = 'typing-' + Date.now();
-  const container = document.getElementById('chat-messages');
+  const id  = 'typing-' + Date.now();
+  const c   = document.getElementById('chat-msgs');
   const div = document.createElement('div');
   div.id = id;
   div.className = 'chat-msg assistant chat-typing';
-  div.innerHTML = `<div class="chat-bubble">
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-    <div class="typing-dot"></div>
-  </div>`;
-  container.appendChild(div);
-  scrollChatToBottom();
+  div.innerHTML = `<div class="chat-bubble"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>`;
+  c.appendChild(div); scrollChat();
   return id;
 }
 
-function removeTyping(id) {
-  const el = document.getElementById(id);
-  if (el) el.remove();
+function removeTyping(id) { const el = document.getElementById(id); if (el) el.remove(); }
+function scrollChat() { const m = document.getElementById('chat-msgs'); m.scrollTop = m.scrollHeight; }
+
+function mdToHtml(t) {
+  if (!t) return '';
+  return t
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```[\w]*\n?([\s\S]*?)```/g,'<pre style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:11px;overflow-x:auto;margin:4px 0"><code>$1</code></pre>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^#{1,3} (.+)$/gm,'<strong>$1</strong>')
+    .replace(/^- (.+)$/gm,'<li>$1</li>')
+    .replace(/^(\d+)\. (.+)$/gm,'<li>$2</li>')
+    .replace(/((?:<li>.*<\/li>\n?)+)/g,'<ul style="padding-left:14px;margin:3px 0">$1</ul>')
+    .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')
+    .replace(/^([^<].+)$/,'<p>$1</p>');
 }
 
-function scrollChatToBottom() {
-  const msgs = document.getElementById('chat-messages');
-  msgs.scrollTop = msgs.scrollHeight;
-}
-
-// ── Minimal markdown renderer ─────────────────────────────────────────────────
-function renderMarkdown(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    // Code blocks
-    .replace(/```[\w]*\n?([\s\S]*?)```/g, '<pre style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:8px;font-size:11px;overflow-x:auto;margin:4px 0"><code>$1</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Headers
-    .replace(/^### (.+)$/gm, '<strong style="font-size:13px">$1</strong>')
-    .replace(/^## (.+)$/gm,  '<strong style="font-size:13.5px">$1</strong>')
-    .replace(/^# (.+)$/gm,   '<strong style="font-size:14px">$1</strong>')
-    // Lists
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/^(\d+)\. (.+)$/gm, '<li>$2</li>')
-    .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul style="padding-left:16px;margin:4px 0">$1</ul>')
-    // Line breaks → paragraphs
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^(.+)$/, '<p>$1</p>');
-}
-
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>');
-}
-
-// ── Re-update context when disposition changes ────────────────────────────────
-// Hook into selectDisp from app.js
-const _origSelectDisp = window.selectDisp;
-// We patch this after app.js loads — see bottom of file
-document.addEventListener('DOMContentLoaded', () => {
-  // Patch selectDisp to also update chat context
-  const originalSelect = window.selectDisp;
-  if (originalSelect) {
-    window.selectDisp = function(folio) {
-      originalSelect(folio);
-      if (chatState.open) updateContextBar();
-    };
-  }
-});
+function esc(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>'); }
