@@ -157,41 +157,42 @@
   <!-- ── DETAIL VIEW ── -->
   <div id="view-detail" style="display:none">
 
-    <div class="detail-nav">
-      <button class="back-btn" onclick="showDashboard()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-        Cartera
-      </button>
-      <span class="detail-nav-sep">/</span>
-      <span class="detail-nav-current" id="detail-nav-folio"></span>
-    </div>
+    <!-- ═══ STICKY HEADER ═══ -->
+    <div class="detail-sticky">
+      <div class="detail-nav">
+        <button class="back-btn" onclick="showDashboard()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Cartera
+        </button>
+        <span class="detail-nav-sep">/</span>
+        <span class="detail-nav-current" id="detail-nav-folio"></span>
+      </div>
 
-    <!-- ═══ HEADER BAR ═══ -->
-    <div class="disp-header">
-      <div class="disp-header-text">
-        Disposición Activa <strong>#<span id="h-folio">—</span></strong> con estatus
-        <span class="disp-status-inline" id="h-status-inline">Vigente</span>
-        de <strong id="h-cliente">—</strong>
+      <div class="disp-header">
+        <div class="disp-header-text">
+          Disposición Activa <strong>#<span id="h-folio">—</span></strong> con estatus
+          <span class="disp-status-inline" id="h-status-inline">Vigente</span>
+          de <strong id="h-cliente">—</strong>
+        </div>
+        <div class="disp-header-meta">
+          <span id="h-contrato"></span><span class="sep">·</span>
+          <span id="h-ejecutivo"></span><span class="sep">·</span>
+          <span id="h-sucursal"></span><span class="sep">·</span>
+          <span class="muted" id="h-producto"></span>
+        </div>
       </div>
-      <div class="disp-header-meta">
-        <span id="h-contrato"></span><span class="sep">·</span>
-        <span id="h-ejecutivo"></span><span class="sep">·</span>
-        <span id="h-sucursal"></span><span class="sep">·</span>
-        <span class="muted" id="h-producto"></span>
-      </div>
-    </div>
 
-    <!-- ═══ TIMELINE BAR ═══ -->
-    <div class="timeline-bar">
-      <div class="tl-date tl-start" id="tl-start">—</div>
-      <div class="tl-track">
-        <div class="tl-progress" id="tl-progress" style="width:0%"></div>
-        <div class="tl-marker" id="tl-marker" style="left:0%"></div>
-      </div>
-      <div class="tl-date tl-end" id="tl-end">—</div>
-      <div class="tl-selector">
-        <label class="tl-sel-label">Seleccionar día</label>
-        <input type="date" id="proj-to" class="tl-sel-input" onchange="calcProj()">
+      <div class="timeline-bar">
+        <div class="tl-date tl-start" id="tl-start">—</div>
+        <div class="tl-track">
+          <div class="tl-progress" id="tl-progress" style="width:0%"></div>
+          <div class="tl-marker" id="tl-marker" style="left:0%"></div>
+        </div>
+        <div class="tl-date tl-end" id="tl-end">—</div>
+        <div class="tl-selector">
+          <label class="tl-sel-label">Seleccionar día</label>
+          <input type="date" id="proj-to" class="tl-sel-input" onchange="calcProj()">
+        </div>
       </div>
     </div>
 
