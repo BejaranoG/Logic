@@ -37,6 +37,7 @@ app.add_middleware(
 _cache: dict = {
     "data": [],
     "last_sync": None,
+    "fecha_corte": None,
     "error": None,
     "row_count": 0,
 }
@@ -232,8 +233,10 @@ def sync_from_sheets():
         df.columns = [c.strip() for c in df.columns]  # strip whitespace from headers
 
         records = process_df(df)
+        now = datetime.utcnow()
         _cache["data"] = records
-        _cache["last_sync"] = datetime.utcnow().isoformat() + "Z"
+        _cache["last_sync"] = now.isoformat() + "Z"
+        _cache["fecha_corte"] = now.strftime("%Y-%m-%d")
         _cache["error"] = None
         _cache["row_count"] = len(records)
         log.info(f"Sync OK — {len(records)} disposiciones vigentes")
@@ -267,6 +270,7 @@ def get_cartera():
     return JSONResponse({
         "data": _cache["data"],
         "last_sync": _cache["last_sync"],
+        "fecha_corte": _cache["fecha_corte"],
         "count": _cache["row_count"],
     })
 
