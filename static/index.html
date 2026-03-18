@@ -293,6 +293,81 @@
   </div><!-- /content -->
 </div><!-- /main -->
 
+
+<!-- ══ CHAT WIDGET ══ -->
+<!-- Floating button -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Asistente LOGIC IA">
+  <svg class="chat-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  </svg>
+  <svg class="chat-close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+  <span class="chat-fab-badge" id="chat-badge" style="display:none">!</span>
+</button>
+
+<!-- Chat panel -->
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-header">
+    <div class="chat-header-left">
+      <div class="chat-avatar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </div>
+      <div>
+        <div class="chat-title">Asistente LOGIC</div>
+        <div class="chat-subtitle" id="chat-subtitle">Potenciado por Claude · IA</div>
+      </div>
+    </div>
+    <button class="chat-clear-btn" onclick="clearChat()" title="Nueva conversación">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="chat-messages" id="chat-messages">
+    <div class="chat-welcome">
+      <div class="chat-welcome-logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+      </div>
+      <p class="chat-welcome-title">Hola, soy tu asistente LOGIC</p>
+      <p class="chat-welcome-sub">Puedo ayudarte con cálculos de interés, interpretación de saldos, proyecciones y cualquier duda sobre tu cartera.</p>
+      <div class="chat-suggestions">
+        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo se calcula el interés ordinario?</button>
+        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué significa capital vencido exigible?</button>
+        <button class="chat-suggestion" onclick="sendSuggestion(this)">Explícame el saldo de esta disposición</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-input-area">
+    <div class="chat-context-bar" id="chat-context-bar" style="display:none">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Contexto: <span id="chat-context-label">—</span>
+    </div>
+    <div class="chat-input-row">
+      <textarea
+        id="chat-input"
+        class="chat-input"
+        placeholder="Pregunta sobre saldos, cálculos, proyecciones…"
+        rows="1"
+        onkeydown="handleChatKey(event)"
+        oninput="autoResize(this)"
+      ></textarea>
+      <button class="chat-send" id="chat-send" onclick="sendMessage()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="/static/js/app.js"></script>
+<script src="/static/js/chat.js"></script>
 </body>
 </html>
