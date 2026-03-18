@@ -6,16 +6,18 @@ No requiere Service Account ni credenciales — solo el Sheet ID público.
 
 import os
 import io
+import json
 import logging
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
 
 import httpx
 import pandas as pd
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -265,3 +267,85 @@ def root():
 @app.get("/{path:path}")
 def spa_fallback(path: str):
     return FileResponse("static/index.html")
+
+
+# ── Chat Models ───────────────────────────────────────────────────────────────
+class ChatMessage(BaseModel):
+    role: str    # 'user' | 'assistant'
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    system: str = ""
+
+
+# ── Chat Endpoint — streaming proxy to Anthropic ─────────────────────────────
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL   = "claude-sonnet-4-5"
+
+@app.post("/api/chat")
+async def chat(req: ChatRequest):
+    """
+    Streaming proxy a la API de Anthropic (Claude).
+    Requiere variable de entorno ANTHROPIC_API_KEY.
+    """
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="ANTHROPIC_API_KEY no configurada. Agrégala como variable de entorno."
+        )
+
+    payload = {
+        "model": ANTHROPIC_MODEL,
+        "max_tokens": 1024,
+        "stream": True,
+        "system": req.system,
+        "messages": [{"role": m.role, "content": m.content} for m in req.messages],
+    }
+
+    async def stream_response():
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST",
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json=payload,
+            ) as resp:
+                if resp.status_code != 200:
+                    body = await resp.aread()
+                    err  = body.decode()
+                    yield f"data: {json.dumps({'delta':{'text': f'Error de API: {err[:200]}'}})}\n\n"
+                    return
+
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data = line[6:].strip()
+                        if data == "[DONE]":
+                            yield "data: [DONE]\n\n"
+                            return
+                        try:
+                            evt = json.loads(data)
+                            # Anthropic SSE: content_block_delta with delta.text
+                            if evt.get("type") == "content_block_delta":
+                                delta_text = evt.get("delta", {}).get("text", "")
+                                if delta_text:
+                                    yield f"data: {json.dumps({'delta':{'text': delta_text}})}\n\n"
+                        except json.JSONDecodeError:
+                            pass
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        stream_response(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
+    )
