@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,357 +11,351 @@
 </head>
 <body>
 
-<!-- ── SIDEBAR ── -->
-<aside class="sidebar" id="sidebar">
-  <div class="sidebar-head">
-    <div class="logo">
-      <img src="/static/logo.png" alt="LOGIC" class="logo-img">
-      <div class="logo-text">
-        <span class="logo-sub">Proyección de Saldos</span>
-      </div>
-    </div>
-    <div class="sync-row" id="sync-row">
-      <span class="sync-dot" id="sync-dot"></span>
-      <span class="sync-label" id="sync-label">Cargando…</span>
-      <button class="sync-btn" id="sync-btn" onclick="triggerSync()" title="Sincronizar con Google Sheets">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-      </button>
-    </div>
-  </div>
+<!-- ══ TOPBAR ══ -->
+<header class="topbar">
+  <a href="/" class="topbar-logo" onclick="showDashboard(); return false;">
+    <img src="/static/logo.png" alt="LOGIC" class="logo-img">
+  </a>
 
-  <div class="sidebar-search-wrap">
-    <div class="search-box">
+  <div class="topbar-search-wrap">
+    <div class="search-box" id="search-box">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input type="text" id="search-input" placeholder="Cliente, folio, contrato…" oninput="applyFilters()">
+      <input type="text" id="search-input" placeholder="Buscar por folio o cliente…" oninput="onSearch()" onkeydown="onSearchKey(event)" autocomplete="off">
       <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none">×</button>
     </div>
+    <div class="search-dropdown" id="search-dropdown"></div>
   </div>
 
-  <div class="sidebar-filters">
-    <button class="filter-pill active" data-f="all"     onclick="setFilter(this)">Todos</button>
-    <button class="filter-pill"        data-f="prev"    onclick="setFilter(this)">Preventivo</button>
-    <button class="filter-pill warn"   data-f="impago"  onclick="setFilter(this)">Impago</button>
-    <button class="filter-pill danger" data-f="vencido" onclick="setFilter(this)">Vencido</button>
-  </div>
-
-  <div class="sidebar-sort">
-    <select id="sort-select" onchange="applyFilters()">
-      <option value="cliente">Ordenar: A–Z Cliente</option>
-      <option value="capital_desc">Mayor Capital</option>
-      <option value="vto_asc">Próximo Vencimiento</option>
-      <option value="folio_asc">Folio ↑</option>
-    </select>
-  </div>
-
-  <div class="sidebar-list" id="sidebar-list">
-    <div class="loading-state">
-      <div class="spinner"></div>
-      <span>Cargando cartera…</span>
+  <div class="topbar-right">
+    <div class="sync-pill" id="sync-pill">
+      <span class="sync-dot" id="sync-dot"></span>
+      <span id="sync-label">Cargando…</span>
+      <button class="sync-refresh" id="sync-btn" onclick="triggerSync()" title="Sincronizar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      </button>
     </div>
-  </div>
-
-  <div class="sidebar-footer">
-    <span id="footer-count">—</span>
-    <span id="footer-capital">—</span>
-  </div>
-</aside>
-
-<!-- ── MAIN ── -->
-<div class="main">
-  <header class="topbar">
-    <div class="breadcrumb" id="breadcrumb">
-      <span class="bc-root">Disposiciones</span>
-    </div>
-    <div class="topbar-actions">
-      <div id="topbar-tags"></div>
-      <div class="today-chip">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <span id="today-label"></span>
-      </div>
-    </div>
-  </header>
-
-  <div class="content" id="content">
-    <!-- EMPTY STATE -->
-    <div class="empty-state" id="empty-state">
-      <div class="empty-logo">
-        <img src="/static/logo.png" alt="LOGIC">
-      </div>
-      <h3>Selecciona una disposición</h3>
-      <p>Elige una disposición del panel izquierdo para ver su proyección de saldos</p>
-    </div>
-
-    <!-- DETAIL PANEL (hidden until selection) -->
-    <div id="detail" style="display:none">
-
-      <!-- ── HERO STRIP ── -->
-      <div class="hero-strip">
-        <div class="hero-main">
-          <div class="hero-id" id="h-folio"></div>
-          <div class="hero-name" id="h-cliente"></div>
-          <div class="hero-meta-row">
-            <span id="h-contrato"></span>
-            <span class="sep">·</span>
-            <span id="h-ejecutivo"></span>
-            <span class="sep">·</span>
-            <span id="h-sucursal"></span>
-            <span class="sep">·</span>
-            <span id="h-producto" class="muted"></span>
-          </div>
-        </div>
-        <div class="hero-kpis">
-          <div class="hkpi">
-            <div class="hkpi-l">Capital Vigente</div>
-            <div class="hkpi-v blue" id="hk-capital"></div>
-          </div>
-          <div class="hkpi">
-            <div class="hkpi-l">Tasa Ordinaria Anual</div>
-            <div class="hkpi-v" id="hk-tasa"></div>
-          </div>
-          <div class="hkpi">
-            <div class="hkpi-l">Interés Diario</div>
-            <div class="hkpi-v green" id="hk-diario"></div>
-          </div>
-          <div class="hkpi">
-            <div class="hkpi-l">Próx. Vencimiento</div>
-            <div class="hkpi-v" id="hk-vto"></div>
-            <div class="hkpi-sub" id="hk-vto-sub"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── PROJECTION CARD ── -->
-      <div class="proj-card">
-        <div class="proj-card-header">
-          <div class="proj-card-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-            Proyección de Interés Ordinario
-          </div>
-          <div class="proj-card-desc">Selecciona cualquier fecha y calcula el interés exacto a ese día</div>
-        </div>
-
-        <div class="proj-body">
-          <!-- Date controls -->
-          <div class="date-controls">
-            <div class="dc-group">
-              <label class="dc-label">Fecha inicio período</label>
-              <div class="dc-input-wrap">
-                <input type="date" id="proj-from" class="dc-input" onchange="calcProj()">
-                <div class="dc-hint" id="hint-from"></div>
-              </div>
-            </div>
-            <div class="dc-arrow">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </div>
-            <div class="dc-group">
-              <label class="dc-label">Fecha proyección <span class="dc-required">*</span></label>
-              <div class="dc-input-wrap">
-                <input type="date" id="proj-to" class="dc-input proj-to-main" onchange="calcProj()">
-                <div class="dc-hint" id="hint-to"></div>
-              </div>
-            </div>
-            <div class="dc-quick">
-              <label class="dc-label">Acceso rápido</label>
-              <div class="quick-btns">
-                <button class="qbtn" onclick="setQuick(7)">+7d</button>
-                <button class="qbtn" onclick="setQuick(15)">+15d</button>
-                <button class="qbtn" onclick="setQuick(30)">+30d</button>
-                <button class="qbtn" onclick="setQuick(60)">+60d</button>
-                <button class="qbtn qbtn-aniv" id="qbtn-aniv" onclick="setAniv()">Aniversario</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Period info bar -->
-          <div class="period-bar" id="period-bar">
-            <div class="pb-item">
-              <span class="pb-label">Período</span>
-              <span class="pb-val" id="pb-period">—</span>
-            </div>
-            <div class="pb-item">
-              <span class="pb-label">Días calculados</span>
-              <span class="pb-val accent" id="pb-dias">—</span>
-            </div>
-            <div class="pb-item">
-              <span class="pb-label">Interés diario</span>
-              <span class="pb-val" id="pb-diario">—</span>
-            </div>
-            <div class="pb-formula" id="pb-formula">—</div>
-          </div>
-
-          <!-- Result strip -->
-          <div class="result-strip">
-            <div class="rs-card rs-main">
-              <div class="rs-label">Interés Proyectado</div>
-              <div class="rs-value accent" id="rs-interes">—</div>
-              <div class="rs-sub">sin IVA</div>
-            </div>
-            <div class="rs-plus">+</div>
-            <div class="rs-card">
-              <div class="rs-label">Capital a Pagar</div>
-              <div class="rs-value" id="rs-capital-pago">—</div>
-              <div class="rs-sub" id="rs-cap-sub">según cobranza</div>
-            </div>
-            <div class="rs-equals">=</div>
-            <div class="rs-card rs-total">
-              <div class="rs-label">Total Cobro Proyectado</div>
-              <div class="rs-value green" id="rs-total">—</div>
-              <div class="rs-sub">interés + capital</div>
-            </div>
-          </div>
-
-          <!-- Desglose detallado -->
-          <details class="desglose-details" open>
-            <summary class="desglose-summary">Desglose del cálculo</summary>
-            <div class="desglose-body">
-              <div class="calc-steps">
-                <div class="calc-step">
-                  <div class="cs-num">1</div>
-                  <div class="cs-body">
-                    <div class="cs-label">Capital Vigente</div>
-                    <div class="cs-val" id="cs-capital">—</div>
-                  </div>
-                </div>
-                <div class="calc-op">×</div>
-                <div class="calc-step">
-                  <div class="cs-num">2</div>
-                  <div class="cs-body">
-                    <div class="cs-label">Tasa Base Ordinaria</div>
-                    <div class="cs-val" id="cs-tasa">—</div>
-                  </div>
-                </div>
-                <div class="calc-op">÷ 360 ×</div>
-                <div class="calc-step">
-                  <div class="cs-num">3</div>
-                  <div class="cs-body">
-                    <div class="cs-label">Días del Período</div>
-                    <div class="cs-val" id="cs-dias">—</div>
-                  </div>
-                </div>
-                <div class="calc-op">=</div>
-                <div class="calc-step calc-result">
-                  <div class="cs-num">✓</div>
-                  <div class="cs-body">
-                    <div class="cs-label">Interés Calculado</div>
-                    <div class="cs-val accent" id="cs-result">—</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      <!-- ── SALDOS AL CORTE ── -->
-      <div class="two-col">
-        <div class="info-section">
-          <div class="is-head">Saldos de Capital al Corte</div>
-          <div class="is-body">
-            <div class="is-row"><span>Capital dispuesto original</span><span class="is-val mono" id="is-dispuesto"></span></div>
-            <div class="is-row"><span>Capital vigente (activo)</span><span class="is-val mono accent" id="is-vigente"></span></div>
-            <div class="is-row"><span>Capital impago</span><span class="is-val mono" id="is-impago"></span></div>
-            <div class="is-row"><span>Capital vencido exigible</span><span class="is-val mono" id="is-venc-ex"></span></div>
-          </div>
-        </div>
-        <div class="info-section">
-          <div class="is-head">Saldos de Interés al Corte</div>
-          <div class="is-body">
-            <div class="is-row"><span>Interés ordinario vigente</span><span class="is-val mono accent" id="is-int-vig"></span></div>
-            <div class="is-row"><span>Interés ordinario impago</span><span class="is-val mono" id="is-int-imp"></span></div>
-            <div class="is-row"><span>Interés moratorio</span><span class="is-val mono" id="is-moratorio"></span></div>
-            <div class="is-row"><span>Días de impago</span><span class="is-val mono" id="is-dias-imp"></span></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── INFORMACIÓN GENERAL ── -->
-      <div class="info-section">
-        <div class="is-head">Información General del Crédito</div>
-        <div class="info-grid4">
-          <div class="ig-cell"><div class="ig-label">Fecha de Entrega</div><div class="ig-val mono" id="ig-entrega"></div></div>
-          <div class="ig-cell"><div class="ig-label">Próx. Vencimiento</div><div class="ig-val mono" id="ig-prox-vto"></div></div>
-          <div class="ig-cell"><div class="ig-label">Venc. Contrato</div><div class="ig-val mono" id="ig-vto-cont"></div></div>
-          <div class="ig-cell"><div class="ig-label">Tasa Moratoria</div><div class="ig-val mono" id="ig-tasa-mor"></div></div>
-          <div class="ig-cell"><div class="ig-label">Día Aniversario</div><div class="ig-val" id="ig-aniv"></div></div>
-          <div class="ig-cell"><div class="ig-label">Tipo Crédito</div><div class="ig-val" id="ig-tipo"></div></div>
-          <div class="ig-cell"><div class="ig-label">Status Cobranza</div><div class="ig-val" id="ig-status"></div></div>
-          <div class="ig-cell"><div class="ig-label">Folio Línea</div><div class="ig-val mono" id="ig-linea"></div></div>
-        </div>
-      </div>
-
-    </div><!-- /detail -->
-  </div><!-- /content -->
-</div><!-- /main -->
-
-
-<!-- ══ CHAT WIDGET ══ -->
-<!-- Floating button -->
-<button class="chat-fab" id="chat-fab" onclick="toggleChat()" title="Asistente LOGIC IA">
-  <svg class="chat-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-  </svg>
-  <svg class="chat-close-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none">
-    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-  </svg>
-  <span class="chat-fab-badge" id="chat-badge" style="display:none">!</span>
-</button>
-
-<!-- Chat panel -->
-<div class="chat-panel" id="chat-panel">
-  <div class="chat-header">
-    <div class="chat-header-left">
-      <div class="chat-avatar">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-        </svg>
-      </div>
-      <div>
-        <div class="chat-title">Asistente LOGIC</div>
-        <div class="chat-subtitle" id="chat-subtitle">Potenciado por Claude · IA</div>
-      </div>
-    </div>
-    <button class="chat-clear-btn" onclick="clearChat()" title="Nueva conversación">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/>
-      </svg>
+    <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">
+      <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <svg class="icon-moon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
     </button>
   </div>
+</header>
 
-  <div class="chat-messages" id="chat-messages">
-    <div class="chat-welcome">
-      <div class="chat-welcome-logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-        </svg>
+<!-- ══ MAIN CONTENT ══ -->
+<main class="main" id="main">
+
+  <!-- ── DASHBOARD (home) ── -->
+  <div id="view-dashboard">
+    <div class="dashboard-header">
+      <div>
+        <h1 class="dash-title">Estado de Cartera</h1>
+        <p class="dash-sub" id="dash-sub">Actualizando…</p>
       </div>
-      <p class="chat-welcome-title">Hola, soy tu asistente LOGIC</p>
-      <p class="chat-welcome-sub">Puedo ayudarte con cálculos de interés, interpretación de saldos, proyecciones y cualquier duda sobre tu cartera.</p>
-      <div class="chat-suggestions">
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Cómo se calcula el interés ordinario?</button>
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">¿Qué significa capital vencido exigible?</button>
-        <button class="chat-suggestion" onclick="sendSuggestion(this)">Explícame el saldo de esta disposición</button>
+      <div class="dash-date" id="dash-date"></div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card kpi-primary">
+        <div class="kpi-label">Saldo Neto Total</div>
+        <div class="kpi-value" id="kpi-neto">—</div>
+        <div class="kpi-sub" id="kpi-neto-sub">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Capital Vigente</div>
+        <div class="kpi-value purple" id="kpi-cap-vig">—</div>
+        <div class="kpi-sub" id="kpi-cap-vig-sub">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Capital en Impago</div>
+        <div class="kpi-value yellow" id="kpi-cap-imp">—</div>
+        <div class="kpi-sub" id="kpi-cap-imp-sub">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Capital Vencido</div>
+        <div class="kpi-value red" id="kpi-cap-vec">—</div>
+        <div class="kpi-sub" id="kpi-cap-vec-sub">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Interés Ordinario Vigente</div>
+        <div class="kpi-value purple" id="kpi-int-ord">—</div>
+        <div class="kpi-sub">Devengado período actual</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Interés Ordinario Impago</div>
+        <div class="kpi-value yellow" id="kpi-int-imp">—</div>
+        <div class="kpi-sub">Períodos anteriores sin pago</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Intereses Vencidos</div>
+        <div class="kpi-value red" id="kpi-int-vec">—</div>
+        <div class="kpi-sub">Ordinario + Refinanciado vencido</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Interés Moratorio</div>
+        <div class="kpi-value red" id="kpi-moratorio">—</div>
+        <div class="kpi-sub">Penalización por impago</div>
+      </div>
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-block">
+        <div class="stat-n" id="stat-total">—</div>
+        <div class="stat-l">Disposiciones totales</div>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <div class="stat-n" id="stat-vigente">—</div>
+        <div class="stat-l">Vigentes</div>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <div class="stat-n red" id="stat-vencido">—</div>
+        <div class="stat-l">Vencidas</div>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <div class="stat-n yellow" id="stat-impago">—</div>
+        <div class="stat-l">Con impago</div>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <div class="stat-n" id="stat-clientes">—</div>
+        <div class="stat-l">Clientes</div>
+      </div>
+      <div class="stat-sep"></div>
+      <div class="stat-block">
+        <div class="stat-n" id="stat-ejecutivos">—</div>
+        <div class="stat-l">Ejecutivos</div>
+      </div>
+    </div>
+
+    <!-- Recent / browse -->
+    <div class="dash-section-title">
+      <span>Disposiciones Vigentes</span>
+      <span class="dash-hint">Usa el buscador para filtrar</span>
+    </div>
+    <div class="disposiciones-table-wrap">
+      <table class="disposiciones-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Cliente</th>
+            <th>Ejecutivo</th>
+            <th class="num">Capital Vigente</th>
+            <th class="num">Tasa %</th>
+            <th class="num">Próx. Vencimiento</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="dash-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── DETAIL VIEW ── -->
+  <div id="view-detail" style="display:none">
+
+    <div class="detail-nav">
+      <button class="back-btn" onclick="showDashboard()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Cartera
+      </button>
+      <span class="detail-nav-sep">/</span>
+      <span class="detail-nav-current" id="detail-nav-folio"></span>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-folio" id="h-folio"></div>
+          <div class="hero-name" id="h-cliente"></div>
+          <div class="hero-meta">
+            <span id="h-contrato"></span><span class="sep">·</span>
+            <span id="h-ejecutivo"></span><span class="sep">·</span>
+            <span id="h-sucursal"></span><span class="sep">·</span>
+            <span class="muted" id="h-producto"></span>
+          </div>
+        </div>
+        <div id="h-status-tag"></div>
+      </div>
+      <div class="hero-kpis">
+        <div class="hkpi"><div class="hkpi-l">Capital Vigente</div><div class="hkpi-v purple" id="hk-capital"></div></div>
+        <div class="hkpi"><div class="hkpi-l">Tasa Ordinaria Anual</div><div class="hkpi-v" id="hk-tasa"></div></div>
+        <div class="hkpi"><div class="hkpi-l">Interés Diario</div><div class="hkpi-v green" id="hk-diario"></div></div>
+        <div class="hkpi"><div class="hkpi-l">Próx. Vencimiento</div><div class="hkpi-v" id="hk-vto"></div><div class="hkpi-sub" id="hk-vto-sub"></div></div>
+      </div>
+    </div>
+
+    <!-- Saldos actuales -->
+    <div class="two-col">
+      <div class="card">
+        <div class="card-head">Saldos de Capital al Corte</div>
+        <div class="card-body">
+          <div class="srow"><span>Capital dispuesto original</span><span class="sv mono" id="s-dispuesto"></span></div>
+          <div class="srow"><span>Capital vigente</span><span class="sv mono purple" id="s-vigente"></span></div>
+          <div class="srow"><span>Capital en impago</span><span class="sv mono" id="s-impago"></span></div>
+          <div class="srow"><span>Capital vencido exigible</span><span class="sv mono" id="s-vencido"></span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head">Saldos de Interés al Corte</div>
+        <div class="card-body">
+          <div class="srow"><span>Interés ordinario vigente</span><span class="sv mono purple" id="s-int-ord"></span></div>
+          <div class="srow"><span>Interés ordinario impago</span><span class="sv mono" id="s-int-imp"></span></div>
+          <div class="srow"><span>Intereses vencidos</span><span class="sv mono" id="s-int-vec"></span></div>
+          <div class="srow"><span>Interés moratorio</span><span class="sv mono" id="s-moratorio"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECTION CARD -->
+    <div class="proj-card">
+      <div class="proj-header">
+        <div class="proj-header-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Proyección de Interés Ordinario
+        </div>
+        <div class="proj-header-sub">Selecciona cualquier fecha y calcula el interés exacto a ese día</div>
+      </div>
+      <div class="proj-body">
+
+        <!-- Date controls -->
+        <div class="date-row">
+          <div class="dg">
+            <label class="dl">Inicio del período</label>
+            <input type="date" id="proj-from" class="di" onchange="calcProj()">
+            <div class="dh" id="hint-from"></div>
+          </div>
+          <div class="darrow">→</div>
+          <div class="dg">
+            <label class="dl">Fecha proyección <span class="dr">*</span></label>
+            <input type="date" id="proj-to" class="di di-main" onchange="calcProj()">
+            <div class="dh" id="hint-to"></div>
+          </div>
+          <div class="dg">
+            <label class="dl">Acceso rápido</label>
+            <div class="quick-row">
+              <button class="qbtn" onclick="setQuick(7)">+7d</button>
+              <button class="qbtn" onclick="setQuick(15)">+15d</button>
+              <button class="qbtn" onclick="setQuick(30)">+30d</button>
+              <button class="qbtn" onclick="setQuick(60)">+60d</button>
+              <button class="qbtn qbtn-aniv" id="qbtn-aniv" onclick="setAniv()">Aniversario</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Period info -->
+        <div class="period-bar">
+          <div class="pb-item"><span class="pb-l">Período</span><span class="pb-v" id="pb-period">—</span></div>
+          <div class="pb-item"><span class="pb-l">Días</span><span class="pb-v accent" id="pb-dias">—</span></div>
+          <div class="pb-item"><span class="pb-l">Día hábil</span><span class="pb-v" id="pb-habil">—</span></div>
+          <div class="pb-item"><span class="pb-l">Interés diario</span><span class="pb-v" id="pb-diario">—</span></div>
+          <div class="pb-formula" id="pb-formula">—</div>
+        </div>
+
+        <!-- Results -->
+        <div class="results-grid">
+          <div class="res-card res-main">
+            <div class="res-l">Capital Vigente</div>
+            <div class="res-v purple" id="res-capital">—</div>
+            <div class="res-sub">saldo activo</div>
+          </div>
+          <div class="res-card">
+            <div class="res-l">Interés Proyectado</div>
+            <div class="res-v accent" id="res-interes">—</div>
+            <div class="res-sub">sin IVA</div>
+          </div>
+          <div class="res-card">
+            <div class="res-l">Intereses Vencidos</div>
+            <div class="res-v red" id="res-int-vec">—</div>
+            <div class="res-sub">ord. + refinanciado</div>
+          </div>
+          <div class="res-card">
+            <div class="res-l">Capital Vencido</div>
+            <div class="res-v red" id="res-cap-vec">—</div>
+            <div class="res-sub">exigible</div>
+          </div>
+          <div class="res-card res-total">
+            <div class="res-l">Total Estimado</div>
+            <div class="res-v green" id="res-total">—</div>
+            <div class="res-sub">interés + vencidos + cap</div>
+          </div>
+        </div>
+
+        <!-- Desglose -->
+        <details class="desglose" open>
+          <summary>Desglose del cálculo</summary>
+          <div class="calc-steps">
+            <div class="cs"><div class="cs-n">1</div><div class="cs-b"><div class="cs-l">Capital Vigente</div><div class="cs-v" id="cs-capital">—</div></div></div>
+            <div class="cs-op">×</div>
+            <div class="cs"><div class="cs-n">2</div><div class="cs-b"><div class="cs-l">Tasa Anual</div><div class="cs-v" id="cs-tasa">—</div></div></div>
+            <div class="cs-op">÷ 360 ×</div>
+            <div class="cs"><div class="cs-n">3</div><div class="cs-b"><div class="cs-l">Días período</div><div class="cs-v" id="cs-dias">—</div></div></div>
+            <div class="cs-op">=</div>
+            <div class="cs cs-result"><div class="cs-n">✓</div><div class="cs-b"><div class="cs-l">Interés</div><div class="cs-v accent" id="cs-result">—</div></div></div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Info general -->
+    <div class="card" style="margin-bottom:80px">
+      <div class="card-head">Información General</div>
+      <div class="info-grid">
+        <div class="ig"><div class="ig-l">Fecha de Entrega</div><div class="ig-v mono" id="ig-entrega"></div></div>
+        <div class="ig"><div class="ig-l">Próx. Vencimiento</div><div class="ig-v mono" id="ig-prox-vto"></div></div>
+        <div class="ig"><div class="ig-l">Venc. Contrato</div><div class="ig-v mono" id="ig-vto-cont"></div></div>
+        <div class="ig"><div class="ig-l">Tasa Moratoria</div><div class="ig-v mono" id="ig-tasa-mor"></div></div>
+        <div class="ig"><div class="ig-l">Día Aniversario</div><div class="ig-v" id="ig-aniv"></div></div>
+        <div class="ig"><div class="ig-l">Día Hábil Posterior</div><div class="ig-v" id="ig-habil"></div></div>
+        <div class="ig"><div class="ig-l">Tipo Crédito</div><div class="ig-v" id="ig-tipo"></div></div>
+        <div class="ig"><div class="ig-l">Status Cobranza</div><div class="ig-v" id="ig-status"></div></div>
       </div>
     </div>
   </div>
 
-  <div class="chat-input-area">
-    <div class="chat-context-bar" id="chat-context-bar" style="display:none">
+</main>
+
+<!-- ══ CHAT WIDGET ══ -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()">
+  <svg class="icon-chat" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <svg class="icon-close" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</button>
+
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-hdr">
+    <div class="chat-hdr-l">
+      <div class="chat-avatar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div>
+      <div><div class="chat-title">Asistente LOGIC</div><div class="chat-sub" id="chat-subtitle">Potenciado por Claude</div></div>
+    </div>
+    <button class="chat-clear" onclick="clearChat()" title="Nueva conversación">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
+    </button>
+  </div>
+  <div class="chat-msgs" id="chat-msgs">
+    <div class="chat-welcome" id="chat-welcome">
+      <div class="cw-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div>
+      <p class="cw-title">Hola, soy tu asistente LOGIC</p>
+      <p class="cw-sub">Puedo ayudarte con cálculos de interés, saldos, proyecciones y cualquier duda sobre tu cartera.</p>
+      <div class="chat-suggs">
+        <button class="chat-sugg" onclick="sendSugg(this)">¿Cómo se calcula el interés ordinario?</button>
+        <button class="chat-sugg" onclick="sendSugg(this)">¿Qué significa capital vencido exigible?</button>
+        <button class="chat-sugg" onclick="sendSugg(this)">Explícame el saldo de esta disposición</button>
+      </div>
+    </div>
+  </div>
+  <div class="chat-foot">
+    <div class="chat-ctx" id="chat-ctx" style="display:none">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      Contexto: <span id="chat-context-label">—</span>
+      Contexto: <span id="chat-ctx-label"></span>
     </div>
     <div class="chat-input-row">
-      <textarea
-        id="chat-input"
-        class="chat-input"
-        placeholder="Pregunta sobre saldos, cálculos, proyecciones…"
-        rows="1"
-        onkeydown="handleChatKey(event)"
-        oninput="autoResize(this)"
-      ></textarea>
+      <textarea id="chat-input" class="chat-input" placeholder="Pregunta sobre saldos, cálculos…" rows="1" onkeydown="chatKey(event)" oninput="chatResize(this)"></textarea>
       <button class="chat-send" id="chat-send" onclick="sendMessage()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
     </div>
   </div>
