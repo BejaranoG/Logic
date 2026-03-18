@@ -57,7 +57,7 @@ function todayISO() {
  * El período inicia en el aniversario anterior a la fecha objetivo
  * (o desde fecha_entrega si es el primer período).
  *
- * Fórmula: Capital × (Tasa/100) / 365 × Días
+ * Fórmula: Capital × (Tasa/100) / 360 × Días
  */
 function calcInterest(disp, fromISO, toISO) {
   if (!fromISO || !toISO) return null;
@@ -66,8 +66,8 @@ function calcInterest(disp, fromISO, toISO) {
   if (dias <= 0) return null;
 
   const tasaDecimal = disp.tasa / 100;
-  const interes = disp.capital_vigente * tasaDecimal / 365 * dias;
-  const diario  = disp.capital_vigente * tasaDecimal / 365;
+  const interes = disp.capital_vigente * tasaDecimal / 360 * dias;
+  const diario  = disp.capital_vigente * tasaDecimal / 360;
 
   return {
     fromISO,
@@ -352,7 +352,7 @@ function populateHero(d) {
   set('h-producto', d.producto || '—');
   set('hk-capital', fmtMXN(d.capital_vigente));
   set('hk-tasa',    fmtPct(d.tasa));
-  set('hk-diario',  fmtMXN(d.capital_vigente * (d.tasa / 100) / 365));
+  set('hk-diario',  fmtMXN(d.capital_vigente * (d.tasa / 100) / 360));
   set('hk-vto',     fmtDate(d.fecha_vto));
 
   const today = todayISO();
@@ -441,7 +441,7 @@ function calcProj() {
   set('pb-period',  `${fmtDate(fromISO)} → ${fmtDate(toISO)}`);
   set('pb-dias',    `${dias} días`);
   set('pb-diario',  fmtMXN(diario) + ' / día');
-  set('pb-formula', `${fmtMXN(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 365 × ${dias}`);
+  set('pb-formula', `${fmtMXN(d.capital_vigente)} × ${fmtPct(d.tasa)} ÷ 360 × ${dias}`);
 
   // Result strip
   set('rs-interes',     fmtMXN(interes));
